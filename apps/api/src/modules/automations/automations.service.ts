@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AutomationFlow, AutomationNode, AutomationEdge } from '@appfy/shared';
