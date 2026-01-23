@@ -13,7 +13,8 @@
   },
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build",
+    "build": "pnpm --filter @appfy/shared build && pnpm --filter @appfy/api db:generate && pnpm --filter @appfy/api build",
+    "start": "cd apps/api && pnpm db:migrate:prod && node dist/main.js",
     "lint": "turbo lint",
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
