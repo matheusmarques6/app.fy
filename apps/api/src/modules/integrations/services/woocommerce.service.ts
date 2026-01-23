@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual, scryptSync } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   WooCommerceConnectDto,
@@ -9,15 +9,26 @@ import {
   WooCommerceCustomerDto,
 } from '../dto/woocommerce.dto';
 
+// Rate limit retry config
+const MAX_API_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+// Encryption algorithm
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
 @Injectable()
 export class WooCommerceService {
   private readonly logger = new Logger(WooCommerceService.name);
   private readonly apiVersion = 'wc/v3';
+  private readonly encryptionKey: Buffer;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    // Derive encryption key from secret
+    const secret = this.config.get<string>('ENCRYPTION_SECRET') || 'default-encryption-secret-change-me';
+    this.encryptionKey = scryptSync(secret, 'salt', 32);
+  }
 
   // ==========================================================================
   // Connection
@@ -409,7 +420,20 @@ export class WooCommerceService {
     // Use Basic Auth
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
 
-    const response = await fetch(url.toString(), {
+    return this.makeRequestWithRetry(url.toString(), method, auth, body);
+  }
+
+  /**
+   * Make HTTP request with exponential backoff for rate limiting
+   */
+  private async makeRequestWithRetry(
+    url: string,
+    method: string,
+    auth: string,
+    body?: any,
+    retryCount = 0,
+  ): Promise<any> {
+    const response = await fetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json',
@@ -418,6 +442,18 @@ export class WooCommerceService {
       body: body ? JSON.stringify(body) : undefined,
     });
 
+    // Handle rate limiting (429) and server errors (5xx) with exponential backoff
+    if ((response.status === 429 || response.status >= 500) && retryCount < MAX_API_RETRIES) {
+      const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount);
+      const retryAfter = response.headers.get('Retry-After');
+      const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : backoffMs;
+
+      this.logger.warn(`WooCommerce API rate limited (${response.status}), retrying in ${waitMs}ms (attempt ${retryCount + 1}/${MAX_API_RETRIES})`);
+
+      await this.sleep(waitMs);
+      return this.makeRequestWithRetry(url, method, auth, body, retryCount + 1);
+    }
+
     if (!response.ok) {
       const error = await response.text();
       this.logger.error(`WooCommerce API error: ${response.status} ${error}`);
@@ -425,6 +461,10 @@ export class WooCommerceService {
     }
 
     return response.json();
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // ==========================================================================
@@ -446,22 +486,66 @@ export class WooCommerceService {
   }
 
   private hashEmail(email: string): string {
-    return createHmac('sha256', 'email-hash-salt')
+    const salt = this.config.get<string>('EMAIL_HASH_SALT') || 'email-hash-salt';
+    return createHmac('sha256', salt)
       .update(email.toLowerCase().trim())
       .digest('hex');
   }
 
+  /**
+   * Encrypt credentials using AES-256-GCM
+   * Format: iv:authTag:encryptedData (all base64)
+   */
   private encryptCredentials(key: string, secret: string): string {
-    // Simple encoding for now - use proper encryption in production
-    return Buffer.from(JSON.stringify({ key, secret })).toString('base64');
+    const data = JSON.stringify({ key, secret });
+    const iv = randomBytes(16);
+    const cipher = createCipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
+
+    let encrypted = cipher.update(data, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+
+    const authTag = cipher.getAuthTag();
+
+    return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
   }
 
+  /**
+   * Decrypt credentials using AES-256-GCM
+   */
   private decryptCredentials(encrypted: string): { key: string; secret: string } {
-    return JSON.parse(Buffer.from(encrypted, 'base64').toString());
+    const parts = encrypted.split(':');
+
+    // Fallback for legacy base64-only format
+    if (parts.length === 1) {
+      return JSON.parse(Buffer.from(encrypted, 'base64').toString());
+    }
+
+    const [ivB64, authTagB64, data] = parts;
+    const iv = Buffer.from(ivB64, 'base64');
+    const authTag = Buffer.from(authTagB64, 'base64');
+
+    const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(data, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return JSON.parse(decrypted);
   }
 
+  /**
+   * Encrypt PII using AES-256-GCM
+   */
   private encryptPii(value: string): string {
-    return Buffer.from(value).toString('base64');
+    const iv = randomBytes(16);
+    const cipher = createCipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
+
+    let encrypted = cipher.update(value, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+
+    const authTag = cipher.getAuthTag();
+
+    return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
   }
 
   private async linkOrderToDevice(storeId: string, orderId: string, email: string): Promise<void> {

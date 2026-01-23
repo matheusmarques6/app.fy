@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual, createHash, scryptSync } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   ShopifyOAuthCallbackDto,
@@ -8,6 +8,16 @@ import {
   ShopifyOrderDto,
   ShopifyCustomerDto,
 } from '../dto/shopify.dto';
+
+// Replay window: webhooks older than this are rejected (5 minutes)
+const WEBHOOK_REPLAY_WINDOW_MS = 5 * 60 * 1000;
+// OAuth state expiration (10 minutes)
+const STATE_EXPIRATION_MS = 10 * 60 * 1000;
+// Rate limit retry config
+const MAX_API_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+// Encryption algorithm
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 
 @Injectable()
 export class ShopifyService {
@@ -20,11 +30,16 @@ export class ShopifyService {
     'read_inventory',
     'read_fulfillments',
   ];
+  private readonly encryptionKey: Buffer;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    // Derive encryption key from secret
+    const secret = this.config.get<string>('ENCRYPTION_SECRET') || 'default-encryption-secret-change-me';
+    this.encryptionKey = scryptSync(secret, 'salt', 32);
+  }
 
   // ==========================================================================
   // OAuth Flow
@@ -41,12 +56,16 @@ export class ShopifyService {
       throw new BadRequestException('Shopify integration not configured');
     }
 
-    // Normalize shop domain
+    // Validate and normalize shop domain
     const normalizedShop = this.normalizeShopDomain(shop);
+    if (!this.isValidShopDomain(normalizedShop)) {
+      throw new BadRequestException('Invalid Shopify shop domain');
+    }
 
-    // Generate state (includes storeId for callback)
+    // Generate state with nonce and timestamp for anti-CSRF + expiration
     const nonce = randomBytes(16).toString('hex');
-    const state = Buffer.from(JSON.stringify({ storeId, nonce })).toString('base64');
+    const timestamp = Date.now();
+    const state = Buffer.from(JSON.stringify({ storeId, nonce, timestamp })).toString('base64');
 
     const installUrl = `https://${normalizedShop}/admin/oauth/authorize?` +
       `client_id=${apiKey}&` +
@@ -58,21 +77,52 @@ export class ShopifyService {
   }
 
   /**
+   * Validate shop domain is a valid Shopify domain
+   */
+  private isValidShopDomain(shop: string): boolean {
+    // Must end with .myshopify.com
+    const shopifyDomainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
+    return shopifyDomainRegex.test(shop);
+  }
+
+  /**
    * Handle OAuth callback and exchange code for access token
    */
   async handleOAuthCallback(dto: ShopifyOAuthCallbackDto): Promise<{ integrationId: string }> {
     const { code, shop, state, hmac, timestamp } = dto;
 
-    // Validate HMAC
-    if (hmac) {
-      this.validateHmac({ code, shop, state, timestamp }, hmac);
+    // 1. Validate shop domain is valid *.myshopify.com
+    if (!this.isValidShopDomain(shop)) {
+      this.logger.warn(`Invalid shop domain in OAuth callback: ${shop}`);
+      throw new BadRequestException('Invalid shop domain');
     }
 
-    // Decode state
+    // 2. Validate HMAC signature from querystring
+    if (!hmac) {
+      throw new BadRequestException('Missing HMAC signature');
+    }
+    this.validateHmac({ code, shop, state, timestamp }, hmac);
+
+    // 3. Validate timestamp is not too old (10 minute window)
+    if (timestamp) {
+      const callbackTimestamp = parseInt(timestamp, 10) * 1000; // Convert to ms
+      if (Date.now() - callbackTimestamp > STATE_EXPIRATION_MS) {
+        throw new BadRequestException('OAuth callback expired');
+      }
+    }
+
+    // 4. Decode and validate state
     let storeId: string;
+    let stateTimestamp: number;
     try {
       const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
       storeId = decoded.storeId;
+      stateTimestamp = decoded.timestamp;
+
+      // Validate state hasn't expired
+      if (stateTimestamp && Date.now() - stateTimestamp > STATE_EXPIRATION_MS) {
+        throw new BadRequestException('OAuth state expired');
+      }
     } catch (e) {
       throw new BadRequestException('Invalid state parameter');
     }
@@ -460,19 +510,61 @@ export class ShopifyService {
   }
 
   /**
-   * Handle app uninstall
+   * Handle app uninstall - full cleanup
    */
   private async handleUninstall(integrationId: string): Promise<void> {
     this.logger.log(`App uninstalled for integration ${integrationId}`);
 
-    await this.prisma.integration.update({
+    const integration = await this.prisma.integration.findUnique({
       where: { id: integrationId },
-      data: {
-        status: 'disconnected',
-        access_token_ref: null,
-        refresh_token_ref: null,
-      },
     });
+
+    if (!integration) return;
+
+    const storeId = integration.store_id;
+
+    // Use transaction for atomic cleanup
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Mark integration as disconnected and clear tokens
+      await tx.integration.update({
+        where: { id: integrationId },
+        data: {
+          status: 'disconnected',
+          access_token_ref: null,
+          refresh_token_ref: null,
+          metadata: {
+            ...(integration.metadata as object || {}),
+            uninstalled_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      // 2. Mark all webhooks as inactive
+      await tx.integrationWebhook.updateMany({
+        where: { integration_id: integrationId },
+        data: { status: 'inactive' },
+      });
+
+      // 3. Pause all automations for this store
+      await tx.automation.updateMany({
+        where: {
+          store_id: storeId,
+          status: 'active',
+        },
+        data: { status: 'paused' },
+      });
+
+      // 4. Cancel pending campaigns
+      await tx.campaign.updateMany({
+        where: {
+          store_id: storeId,
+          status: 'scheduled',
+        },
+        data: { status: 'cancelled' },
+      });
+    });
+
+    this.logger.log(`Cleanup completed for uninstalled integration ${integrationId}`);
   }
 
   // ==========================================================================
@@ -480,7 +572,7 @@ export class ShopifyService {
   // ==========================================================================
 
   /**
-   * Make Shopify API request
+   * Make Shopify API request with rate limiting and exponential backoff
    */
   private async shopifyApiRequest(
     shop: string,
@@ -488,6 +580,7 @@ export class ShopifyService {
     method: string,
     endpoint: string,
     body?: any,
+    retryCount = 0,
   ): Promise<any> {
     const url = `https://${shop}/admin/api/${this.apiVersion}${endpoint}`;
 
@@ -500,6 +593,18 @@ export class ShopifyService {
       body: body ? JSON.stringify(body) : undefined,
     });
 
+    // Handle rate limiting (429) and server errors (5xx) with exponential backoff
+    if ((response.status === 429 || response.status >= 500) && retryCount < MAX_API_RETRIES) {
+      const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount);
+      const retryAfter = response.headers.get('Retry-After');
+      const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : backoffMs;
+
+      this.logger.warn(`Shopify API rate limited (${response.status}), retrying in ${waitMs}ms (attempt ${retryCount + 1}/${MAX_API_RETRIES})`);
+
+      await this.sleep(waitMs);
+      return this.shopifyApiRequest(shop, accessToken, method, endpoint, body, retryCount + 1);
+    }
+
     if (!response.ok) {
       const error = await response.text();
       this.logger.error(`Shopify API error: ${response.status} ${error}`);
@@ -507,6 +612,10 @@ export class ShopifyService {
     }
 
     return response.json();
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -563,19 +672,57 @@ export class ShopifyService {
   }
 
   private hashEmail(email: string): string {
-    return createHmac('sha256', 'email-hash-salt')
+    const salt = this.config.get<string>('EMAIL_HASH_SALT') || 'email-hash-salt';
+    return createHmac('sha256', salt)
       .update(email.toLowerCase().trim())
       .digest('hex');
   }
 
-  // In production, use KMS/Vault
+  /**
+   * Encrypt token using AES-256-GCM
+   * Format: iv:authTag:encryptedData (all base64)
+   */
   private encryptToken(token: string): string {
-    // Simple base64 for now - use proper encryption in production
-    return Buffer.from(token).toString('base64');
+    const iv = randomBytes(16);
+    const cipher = createCipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
+
+    let encrypted = cipher.update(token, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+
+    const authTag = cipher.getAuthTag();
+
+    return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
   }
 
+  /**
+   * Decrypt token using AES-256-GCM
+   */
   private decryptToken(encrypted: string): string {
-    return Buffer.from(encrypted, 'base64').toString();
+    const parts = encrypted.split(':');
+
+    // Fallback for legacy base64-only tokens
+    if (parts.length === 1) {
+      return Buffer.from(encrypted, 'base64').toString();
+    }
+
+    const [ivB64, authTagB64, data] = parts;
+    const iv = Buffer.from(ivB64, 'base64');
+    const authTag = Buffer.from(authTagB64, 'base64');
+
+    const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(data, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  }
+
+  /**
+   * Hash payload for replay detection
+   */
+  hashPayload(payload: string): string {
+    return createHash('sha256').update(payload).digest('hex');
   }
 
   private encryptPii(value: string): string {

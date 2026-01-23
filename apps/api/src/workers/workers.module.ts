@@ -17,6 +17,11 @@ import { SegmentProcessor } from './processors/segment.processor';
 import { AutomationProcessor } from './processors/automation.processor';
 import { PushProcessor } from './processors/push.processor';
 import { CampaignProcessor } from './processors/campaign.processor';
+import { IntegrationsProcessor } from './processors/integrations.processor';
+
+// Services needed by processors
+import { ShopifyService } from '../modules/integrations/services/shopify.service';
+import { WooCommerceService } from '../modules/integrations/services/woocommerce.service';
 
 @Module({
   imports: [
@@ -40,6 +45,7 @@ import { CampaignProcessor } from './processors/campaign.processor';
       { name: QUEUE_NAMES.AUTOMATION_EVAL },
       { name: QUEUE_NAMES.PUSH_SEND },
       { name: QUEUE_NAMES.CAMPAIGN_SEND },
+      { name: QUEUE_NAMES.INTEGRATIONS_SYNC },
     ),
 
     PrismaModule,
@@ -47,12 +53,17 @@ import { CampaignProcessor } from './processors/campaign.processor';
     PushModule,
   ],
   providers: [
+    // Processors
     EventsProcessor,
     MetricsProcessor,
     SegmentProcessor,
     AutomationProcessor,
     PushProcessor,
     CampaignProcessor,
+    IntegrationsProcessor,
+    // Services needed by IntegrationsProcessor
+    ShopifyService,
+    WooCommerceService,
   ],
 })
 export class WorkersModule {}

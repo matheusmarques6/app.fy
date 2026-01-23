@@ -18,6 +18,8 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ShopifyService } from '../services/shopify.service';
@@ -28,6 +30,10 @@ import {
   IntegrationResponseDto,
 } from '../dto/shopify.dto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { QUEUE_NAMES } from '@appfy/shared';
+
+// Replay window: reject webhooks older than 5 minutes
+const WEBHOOK_REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
 @Controller('integrations/shopify')
 export class ShopifyController {
@@ -37,6 +43,8 @@ export class ShopifyController {
     private readonly shopifyService: ShopifyService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
+    private readonly integrationsQueue: Queue,
   ) {}
 
   // ==========================================================================
@@ -157,6 +165,15 @@ export class ShopifyController {
   /**
    * Handle Shopify webhooks
    * POST /v1/integrations/shopify/webhooks/:integrationId
+   *
+   * Security:
+   * - HMAC validation using raw body
+   * - Replay window validation (5 min)
+   * - Idempotency via webhook_event_id
+   *
+   * Performance:
+   * - Ack fast (respond 200)
+   * - Process async via queue
    */
   @Post('webhooks/:integrationId')
   @HttpCode(HttpStatus.OK)
@@ -166,21 +183,34 @@ export class ShopifyController {
     @Headers('x-shopify-shop-domain') shopDomain: string,
     @Headers('x-shopify-hmac-sha256') hmacHeader: string,
     @Headers('x-shopify-webhook-id') webhookId: string,
+    @Headers('x-shopify-triggered-at') triggeredAt: string,
     @Req() req: RawBodyRequest<Request>,
   ): Promise<{ received: boolean }> {
-    // Get raw body for HMAC validation
-    const rawBody = req.rawBody?.toString('utf8');
+    // 1. Get raw body for HMAC validation (CRITICAL: use raw bytes, not parsed JSON)
+    const rawBody = req.rawBody;
     if (!rawBody) {
       throw new BadRequestException('Missing request body');
     }
+    const rawBodyStr = rawBody.toString('utf8');
 
-    // Validate HMAC signature
-    if (!this.shopifyService.validateWebhookSignature(rawBody, hmacHeader)) {
+    // 2. Validate HMAC signature using raw body
+    if (!this.shopifyService.validateWebhookSignature(rawBodyStr, hmacHeader)) {
       this.logger.warn(`Invalid webhook signature from ${shopDomain}`);
       throw new UnauthorizedException('Invalid signature');
     }
 
-    // Check for duplicate (idempotency)
+    // 3. Validate replay window (reject webhooks older than 5 minutes)
+    if (triggeredAt) {
+      const triggerTime = new Date(triggeredAt).getTime();
+      const now = Date.now();
+      if (now - triggerTime > WEBHOOK_REPLAY_WINDOW_MS) {
+        this.logger.warn(`Webhook ${webhookId} rejected: too old (triggered at ${triggeredAt})`);
+        // Still return 200 to prevent Shopify from retrying
+        return { received: true };
+      }
+    }
+
+    // 4. Check for duplicate (idempotency)
     const existingEvent = await this.prisma.webhookEvent.findUnique({
       where: { webhook_event_id: webhookId },
     });
@@ -190,27 +220,43 @@ export class ShopifyController {
       return { received: true };
     }
 
-    // Record webhook event for idempotency
+    // 5. Record webhook event with status tracking
+    const payloadHash = this.shopifyService.hashPayload(rawBodyStr);
     await this.prisma.webhookEvent.create({
       data: {
         webhook_event_id: webhookId,
         integration_id: integrationId,
+        provider: 'shopify',
         topic,
         shop_domain: shopDomain,
-        processed_at: new Date(),
+        status: 'received',
+        payload_hash: payloadHash,
+        received_at: new Date(),
       },
     });
 
-    // Process webhook
-    const payload = JSON.parse(rawBody);
+    // 6. Enqueue for async processing (ack fast)
+    await this.integrationsQueue.add(
+      'shopify-webhook',
+      {
+        webhookEventId: webhookId,
+        integrationId,
+        topic,
+        shopDomain,
+        payload: JSON.parse(rawBodyStr),
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+      },
+    );
 
-    try {
-      await this.shopifyService.processWebhook(integrationId, topic, shopDomain, payload);
-    } catch (error) {
-      this.logger.error(`Webhook processing failed: ${topic}`, error);
-      // Don't throw - we've recorded the event, can retry later
-    }
-
+    this.logger.log(`Webhook ${webhookId} (${topic}) queued for processing`);
     return { received: true };
   }
 

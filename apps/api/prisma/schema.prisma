@@ -730,12 +730,19 @@ model WebhookEvent {
   id               String   @id @default(uuid()) @db.Uuid
   webhook_event_id String   @unique // External webhook ID from provider
   integration_id   String   @db.Uuid
+  provider         String   // shopify, woocommerce
   topic            String   // orders/create, products/update, etc.
   shop_domain      String?
-  processed_at     DateTime @default(now())
+  status           String   @default("received") // received, processing, processed, failed
+  attempts         Int      @default(0)
+  last_error       String?
+  payload_hash     String?  // SHA256 of payload for replay detection
+  received_at      DateTime @default(now())
+  processed_at     DateTime?
   created_at       DateTime @default(now())
 
   @@index([integration_id])
+  @@index([status])
   @@index([created_at])
   @@map("webhook_events")
 }

@@ -15,12 +15,16 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { WooCommerceService } from '../services/woocommerce.service';
 import { WooCommerceConnectDto } from '../dto/woocommerce.dto';
 import { IntegrationResponseDto } from '../dto/shopify.dto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { QUEUE_NAMES } from '@appfy/shared';
+import { createHash } from 'crypto';
 
 @Controller('integrations/woocommerce')
 export class WooCommerceController {
@@ -29,6 +33,8 @@ export class WooCommerceController {
   constructor(
     private readonly wooService: WooCommerceService,
     private readonly prisma: PrismaService,
+    @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
+    private readonly integrationsQueue: Queue,
   ) {}
 
   // ==========================================================================
@@ -127,6 +133,14 @@ export class WooCommerceController {
   /**
    * Handle WooCommerce webhooks
    * POST /v1/integrations/woocommerce/webhooks/:integrationId
+   *
+   * Security:
+   * - HMAC validation using raw body
+   * - Idempotency via delivery ID
+   *
+   * Performance:
+   * - Ack fast (respond 200)
+   * - Process async via queue
    */
   @Post('webhooks/:integrationId')
   @HttpCode(HttpStatus.OK)
@@ -137,13 +151,14 @@ export class WooCommerceController {
     @Headers('x-wc-webhook-delivery-id') deliveryId: string,
     @Req() req: RawBodyRequest<Request>,
   ): Promise<{ received: boolean }> {
-    // Get raw body for signature validation
-    const rawBody = req.rawBody?.toString('utf8');
+    // 1. Get raw body for signature validation (CRITICAL: use raw bytes)
+    const rawBody = req.rawBody;
     if (!rawBody) {
       throw new BadRequestException('Missing request body');
     }
+    const rawBodyStr = rawBody.toString('utf8');
 
-    // Get integration to find webhook secret
+    // 2. Get integration to find webhook secret
     const integration = await this.prisma.integration.findUnique({
       where: { id: integrationId },
     });
@@ -152,48 +167,63 @@ export class WooCommerceController {
       throw new UnauthorizedException('Invalid integration');
     }
 
-    // Get webhook secret from integration metadata
+    // 3. Validate signature using raw body
     const webhookSecret = (integration.metadata as any)?.webhook_secret;
-
-    // Validate signature if we have a secret
     if (webhookSecret && signature) {
-      if (!this.wooService.validateWebhookSignature(rawBody, signature, webhookSecret)) {
+      if (!this.wooService.validateWebhookSignature(rawBodyStr, signature, webhookSecret)) {
         this.logger.warn(`Invalid WooCommerce webhook signature for integration ${integrationId}`);
         throw new UnauthorizedException('Invalid signature');
       }
     }
 
-    // Check for duplicate (idempotency)
-    if (deliveryId) {
-      const existingEvent = await this.prisma.webhookEvent.findUnique({
-        where: { webhook_event_id: deliveryId },
-      });
+    // 4. Generate delivery ID if not provided (for idempotency)
+    const webhookEventId = deliveryId || createHash('sha256').update(rawBodyStr).digest('hex');
 
-      if (existingEvent) {
-        this.logger.log(`Duplicate WooCommerce webhook ${deliveryId} - ignoring`);
-        return { received: true };
-      }
+    // 5. Check for duplicate (idempotency)
+    const existingEvent = await this.prisma.webhookEvent.findUnique({
+      where: { webhook_event_id: webhookEventId },
+    });
 
-      // Record webhook event
-      await this.prisma.webhookEvent.create({
-        data: {
-          webhook_event_id: deliveryId,
-          integration_id: integrationId,
-          topic,
-          processed_at: new Date(),
+    if (existingEvent) {
+      this.logger.log(`Duplicate WooCommerce webhook ${webhookEventId} - ignoring`);
+      return { received: true };
+    }
+
+    // 6. Record webhook event with status tracking
+    const payloadHash = createHash('sha256').update(rawBodyStr).digest('hex');
+    await this.prisma.webhookEvent.create({
+      data: {
+        webhook_event_id: webhookEventId,
+        integration_id: integrationId,
+        provider: 'woocommerce',
+        topic,
+        status: 'received',
+        payload_hash: payloadHash,
+        received_at: new Date(),
+      },
+    });
+
+    // 7. Enqueue for async processing (ack fast)
+    await this.integrationsQueue.add(
+      'woocommerce-webhook',
+      {
+        webhookEventId,
+        integrationId,
+        topic,
+        payload: JSON.parse(rawBodyStr),
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
         },
-      });
-    }
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+      },
+    );
 
-    // Process webhook
-    const payload = JSON.parse(rawBody);
-
-    try {
-      await this.wooService.processWebhook(integrationId, topic, payload);
-    } catch (error) {
-      this.logger.error(`WooCommerce webhook processing failed: ${topic}`, error);
-    }
-
+    this.logger.log(`WooCommerce webhook ${webhookEventId} (${topic}) queued for processing`);
     return { received: true };
   }
 
