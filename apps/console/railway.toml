@@ -3,7 +3,7 @@
 
 [build]
 builder = "nixpacks"
-buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @appfy/shared build && pnpm --filter @appfy/console build"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @appfy/shared build && pnpm --filter @appfy/console build"
 
 [deploy]
 startCommand = "pnpm --filter @appfy/console start"
