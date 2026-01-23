@@ -74,7 +74,7 @@ export class OneSignalProvider implements PushProvider {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const data: any = await response.json();
 
       if (!response.ok) {
         this.logger.error('OneSignal API error:', data);
@@ -151,7 +151,7 @@ export class OneSignalProvider implements PushProvider {
         return { sent: 0, delivered: 0, opened: 0, clicked: 0 };
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
 
       return {
         sent: data.successful || 0,

@@ -30,7 +30,7 @@ export class PrismaService
 
     // Log slow queries in development
     if (process.env.NODE_ENV === 'development') {
-      (this as any).$on('query', (e: Prisma.QueryEvent) => {
+      (this as any).$on('query', (e: any) => {
         if (e.duration > 100) {
           this.logger.warn(`Slow query (${e.duration}ms): ${e.query}`);
         }
@@ -68,11 +68,11 @@ export class PrismaService
    */
   async queryWithRLS<T>(
     storeId: string,
-    query: Prisma.Sql,
+    query: any,
   ): Promise<T> {
-    return this.$transaction(async (tx) => {
+    return this.$transaction(async (tx: any) => {
       await tx.$executeRaw`SELECT set_config('app.store_id', ${storeId}, true)`;
-      return tx.$queryRaw<T>(query);
+      return tx.$queryRaw(query) as T;
     });
   }
 

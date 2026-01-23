@@ -117,3 +117,8 @@ export interface UpdateAutomationRequest {
   nodes?: AutomationNode[];
   edges?: AutomationEdge[];
 }
+
+export interface AutomationFlow {
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
+}

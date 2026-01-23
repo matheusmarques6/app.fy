@@ -3,6 +3,9 @@
   "compilerOptions": {
     "outDir": "./dist",
     "baseUrl": "./",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitAny": false,
     "paths": {
       "@/*": ["src/*"],
       "@modules/*": ["src/modules/*"],
