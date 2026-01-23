@@ -52,30 +52,35 @@ export class IntegrationsProcessor extends WorkerHost {
     }
   }
 
+  // Max retry attempts before giving up
+  private readonly MAX_ATTEMPTS = 3;
+
   /**
    * Acquire processing lock using atomic status update
    * Returns true if lock acquired, false if already processing/processed
    *
    * Allows lock acquisition when:
    * - status = 'received' (new event)
-   * - status = 'failed' (retry after failure)
+   * - status = 'failed' AND attempts < MAX_ATTEMPTS (retry after failure)
    *
    * Blocks when:
    * - status = 'processing' (concurrent execution)
    * - status = 'processed' (already completed)
+   * - attempts >= MAX_ATTEMPTS (permanent failure)
    */
   private async acquireProcessingLock(
     storeId: string,
     provider: string,
     webhookEventId: string,
   ): Promise<boolean> {
-    // Atomic update: only set to processing if received or failed (allows retry)
+    // Atomic update: only set to processing if received or failed (with retry limit)
     const result = await this.prisma.webhookEvent.updateMany({
       where: {
         store_id: storeId,
         provider,
         webhook_event_id: webhookEventId,
-        status: { in: ['received', 'failed'] }, // Allow retry on failure
+        status: { in: ['received', 'failed'] },
+        attempts: { lt: this.MAX_ATTEMPTS }, // Limit retries
       },
       data: {
         status: 'processing',
