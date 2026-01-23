@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "pnpm --filter @appfy/shared build && pnpm --filter @appfy/api db:generate && pnpm --filter @appfy/api build",
-    "start": "cd apps/api && pnpm db:migrate:prod && node dist/main.js",
+    "start": "cd apps/api && npx prisma db push --skip-generate && node dist/main.js",
     "lint": "turbo lint",
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
