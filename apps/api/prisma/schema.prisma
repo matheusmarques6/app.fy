@@ -1,0 +1,716 @@
+// =============================================================================
+// AppFy - Prisma Schema
+// =============================================================================
+// Multi-tenant SaaS for E-commerce App Builder
+// Uses PostgreSQL with Row-Level Security (RLS)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =============================================================================
+// ACCOUNTS & USERS (Console/Admin)
+// =============================================================================
+
+model Account {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String   @unique
+  plan       String   @default("free") // free, starter, pro, enterprise
+  status     String   @default("active") // active, suspended, deleted
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  memberships AccountMembership[]
+  stores      Store[]
+
+  @@map("accounts")
+}
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String   @unique
+  email_verified  Boolean  @default(false)
+  password_hash   String?
+  name            String?
+  avatar_url      String?
+  auth_provider   String   @default("email") // email, google, github
+  auth_provider_id String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  account_memberships AccountMembership[]
+  store_memberships   StoreMembership[]
+  audit_logs          AuditLog[]
+
+  @@map("users")
+}
+
+model AccountMembership {
+  id         String   @id @default(uuid()) @db.Uuid
+  account_id String   @db.Uuid
+  user_id    String   @db.Uuid
+  role       String   @default("viewer") // owner, admin, editor, viewer
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  account Account @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([account_id, user_id])
+  @@map("account_memberships")
+}
+
+// =============================================================================
+// STORES (Tenants)
+// =============================================================================
+
+model Store {
+  id             String   @id @default(uuid()) @db.Uuid
+  account_id     String   @db.Uuid
+  name           String
+  slug           String
+  platform       String   // shopify, woocommerce
+  primary_domain String
+  status         String   @default("pending") // pending, active, suspended, deleted
+  settings       Json     @default("{}")
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  account       Account           @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  memberships   StoreMembership[]
+  integrations  Integration[]
+  apps          App[]
+  devices       Device[]
+  events        Event[]
+  segments      Segment[]
+  automations   Automation[]
+  campaigns     Campaign[]
+  templates     PushTemplate[]
+  deliveries    Delivery[]
+  orders        Order[]
+  customers     Customer[]
+  audit_logs    AuditLog[]
+  remote_configs RemoteConfig[]
+
+  @@unique([account_id, slug])
+  @@index([account_id])
+  @@map("stores")
+}
+
+model StoreMembership {
+  id         String   @id @default(uuid()) @db.Uuid
+  store_id   String   @db.Uuid
+  user_id    String   @db.Uuid
+  role       String   @default("viewer") // owner, admin, editor, viewer
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, user_id])
+  @@map("store_memberships")
+}
+
+// =============================================================================
+// INTEGRATIONS (Shopify/Woo)
+// =============================================================================
+
+model Integration {
+  id            String   @id @default(uuid()) @db.Uuid
+  store_id      String   @db.Uuid
+  platform      String   // shopify, woocommerce
+  status        String   @default("pending") // pending, active, error, disconnected
+  shop_domain   String?
+  access_token_ref String? // Reference to secret in KMS/Vault
+  refresh_token_ref String?
+  scopes        String[]
+  metadata      Json     @default("{}")
+  last_sync_at  DateTime?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Relations
+  store    Store              @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  webhooks IntegrationWebhook[]
+
+  @@unique([store_id, platform])
+  @@index([store_id])
+  @@map("integrations")
+}
+
+model IntegrationWebhook {
+  id              String   @id @default(uuid()) @db.Uuid
+  integration_id  String   @db.Uuid
+  topic           String   // orders/create, products/update, etc.
+  webhook_id      String?  // External webhook ID
+  address         String
+  status          String   @default("active")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  integration Integration @relation(fields: [integration_id], references: [id], onDelete: Cascade)
+
+  @@unique([integration_id, topic])
+  @@map("integration_webhooks")
+}
+
+// =============================================================================
+// APPS (Mobile Apps)
+// =============================================================================
+
+model App {
+  id             String   @id @default(uuid()) @db.Uuid
+  store_id       String   @db.Uuid
+  name           String
+  bundle_id_ios  String?
+  bundle_id_android String?
+  status         String   @default("draft") // draft, building, published, suspended
+  config         Json     @default("{}")
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  store         Store          @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  versions      AppVersion[]
+  devices       Device[]
+  credentials   AppCredential[]
+
+  @@unique([store_id]) // One app per store in MVP
+  @@index([store_id])
+  @@map("apps")
+}
+
+model AppVersion {
+  id             String   @id @default(uuid()) @db.Uuid
+  app_id         String   @db.Uuid
+  version_code   Int
+  version_name   String
+  platform       String   // ios, android
+  status         String   @default("pending") // pending, building, built, published, failed
+  build_log_url  String?
+  artifact_url   String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  app        App         @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  build_jobs BuildJob[]
+
+  @@unique([app_id, platform, version_code])
+  @@index([app_id])
+  @@map("app_versions")
+}
+
+model AppCredential {
+  id             String   @id @default(uuid()) @db.Uuid
+  app_id         String   @db.Uuid
+  platform       String   // ios, android
+  credential_type String  // app_store_connect, google_play
+  secret_ref     String   // Reference to secret in KMS/Vault
+  metadata       Json     @default("{}")
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  app App @relation(fields: [app_id], references: [id], onDelete: Cascade)
+
+  @@unique([app_id, platform, credential_type])
+  @@map("app_credentials")
+}
+
+model BuildJob {
+  id             String   @id @default(uuid()) @db.Uuid
+  app_version_id String   @db.Uuid
+  status         String   @default("pending") // pending, running, completed, failed
+  started_at     DateTime?
+  completed_at   DateTime?
+  log_url        String?
+  error_message  String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // Relations
+  app_version AppVersion @relation(fields: [app_version_id], references: [id], onDelete: Cascade)
+
+  @@index([app_version_id])
+  @@map("build_jobs")
+}
+
+// =============================================================================
+// DEVICES & PUSH SUBSCRIPTIONS
+// =============================================================================
+
+model Device {
+  id                 String   @id @default(uuid()) @db.Uuid
+  store_id           String   @db.Uuid
+  app_id             String   @db.Uuid
+  device_fingerprint String
+  platform           String   // ios, android
+  locale             String
+  timezone           String
+  country_guess      String?
+  app_instance_id    String?
+  customer_id        String?  @db.Uuid
+  identity_confirmed Boolean  @default(false)
+  last_seen_at       DateTime @default(now())
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  // Relations
+  store             Store              @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  app               App                @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  customer          Customer?          @relation(fields: [customer_id], references: [id])
+  push_subscriptions PushSubscription[]
+  sessions          DeviceSession[]
+  events            Event[]
+  deliveries        Delivery[]
+  user_metrics      UserMetrics?
+  segment_memberships SegmentMembership[]
+  automation_runs   AutomationRun[]
+
+  @@unique([store_id, device_fingerprint])
+  @@index([store_id])
+  @@index([customer_id])
+  @@map("devices")
+}
+
+model DeviceSession {
+  id                        String   @id @default(uuid()) @db.Uuid
+  device_id                 String   @db.Uuid
+  store_id                  String   @db.Uuid
+  family_id                 String   @db.Uuid
+  current_refresh_token_hash String
+  revoked_at                DateTime?
+  revoke_reason             String?  // refresh_reuse, fingerprint_change, manual, abuse_detected
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  // Relations
+  device Device @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id])
+  @@index([store_id])
+  @@map("device_sessions")
+}
+
+model PushSubscription {
+  id              String   @id @default(uuid()) @db.Uuid
+  device_id       String   @db.Uuid
+  store_id        String   @db.Uuid
+  provider        String   @default("onesignal")
+  provider_sub_id String
+  opt_in          Boolean  @default(true)
+  opt_in_at       DateTime?
+  opt_out_at      DateTime?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  device Device @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@unique([device_id, provider])
+  @@index([store_id])
+  @@index([provider_sub_id])
+  @@map("push_subscriptions")
+}
+
+// =============================================================================
+// CUSTOMERS (End Users - PII)
+// =============================================================================
+
+model Customer {
+  id                   String   @id @default(uuid()) @db.Uuid
+  store_id             String   @db.Uuid
+  external_customer_id String?  // Shopify/Woo customer ID
+  email_encrypted      String?  // Encrypted PII
+  email_hash           String?  // For matching without decrypting
+  name_encrypted       String?
+  phone_encrypted      String?
+  tags                 String[]
+  metadata             Json     @default("{}")
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  // Relations
+  store   Store    @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  devices Device[]
+  orders  Order[]
+
+  @@unique([store_id, external_customer_id])
+  @@index([store_id])
+  @@index([email_hash])
+  @@map("customers")
+}
+
+// =============================================================================
+// EVENTS (High Volume)
+// =============================================================================
+
+model Event {
+  id             String   @id @default(uuid()) @db.Uuid
+  store_id       String   @db.Uuid
+  device_id      String   @db.Uuid
+  event_id       String   // Client-generated for idempotency
+  name           String   // view_product, add_to_cart, etc.
+  ts             DateTime // Event timestamp
+  props          Json     @default("{}")
+  // Hot columns (extracted from props for faster queries)
+  product_id     String?
+  order_id       String?
+  campaign_id    String?  @db.Uuid
+  delivery_id    String?  @db.Uuid
+  value_amount_minor Int?
+  currency       String?
+  created_at     DateTime @default(now())
+
+  // Relations
+  store  Store  @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, event_id])
+  @@index([store_id, ts])
+  @@index([device_id, ts])
+  @@index([store_id, name, ts])
+  @@map("events")
+}
+
+model UserMetrics {
+  id                     String   @id @default(uuid()) @db.Uuid
+  device_id              String   @unique @db.Uuid
+  store_id               String   @db.Uuid
+  first_seen_at          DateTime
+  last_seen_at           DateTime
+  session_count_7d       Int      @default(0)
+  session_count_30d      Int      @default(0)
+  view_product_7d        Int      @default(0)
+  view_product_30d       Int      @default(0)
+  add_to_cart_7d         Int      @default(0)
+  add_to_cart_30d        Int      @default(0)
+  purchases_7d           Int      @default(0)
+  purchases_30d          Int      @default(0)
+  purchases_90d          Int      @default(0)
+  spent_7d_amount_minor  Int      @default(0)
+  spent_30d_amount_minor Int      @default(0)
+  spent_90d_amount_minor Int      @default(0)
+  currency               String   @default("BRL")
+  updated_at             DateTime @updatedAt
+
+  // Relations
+  device Device @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([store_id])
+  @@map("user_metrics")
+}
+
+// =============================================================================
+// SEGMENTS
+// =============================================================================
+
+model Segment {
+  id           String   @id @default(uuid()) @db.Uuid
+  store_id     String   @db.Uuid
+  name         String
+  description  String?
+  definition   Json     // DSL rules
+  member_count Int      @default(0)
+  is_system    Boolean  @default(false)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  // Relations
+  store       Store               @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  memberships SegmentMembership[]
+  automations Automation[]
+  campaigns   Campaign[]
+
+  @@unique([store_id, name])
+  @@index([store_id])
+  @@map("segments")
+}
+
+model SegmentMembership {
+  id         String    @id @default(uuid()) @db.Uuid
+  segment_id String    @db.Uuid
+  device_id  String    @db.Uuid
+  store_id   String    @db.Uuid
+  entered_at DateTime  @default(now())
+  exited_at  DateTime?
+
+  // Relations
+  segment Segment @relation(fields: [segment_id], references: [id], onDelete: Cascade)
+  device  Device  @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@unique([segment_id, device_id])
+  @@index([store_id])
+  @@index([device_id])
+  @@map("segment_memberships")
+}
+
+// =============================================================================
+// AUTOMATIONS (Flows)
+// =============================================================================
+
+model Automation {
+  id               String   @id @default(uuid()) @db.Uuid
+  store_id         String   @db.Uuid
+  name             String
+  description      String?
+  status           String   @default("draft") // draft, active, paused, archived
+  entry_event      String   // Trigger event name
+  entry_segment_id String?  @db.Uuid
+  nodes            Json     @default("[]")
+  edges            Json     @default("[]")
+  stats            Json     @default("{}")
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relations
+  store         Store           @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  entry_segment Segment?        @relation(fields: [entry_segment_id], references: [id])
+  runs          AutomationRun[]
+  deliveries    Delivery[]
+
+  @@index([store_id])
+  @@index([store_id, status])
+  @@map("automations")
+}
+
+model AutomationRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  automation_id   String    @db.Uuid
+  device_id       String    @db.Uuid
+  store_id        String    @db.Uuid
+  status          String    @default("running") // running, waiting, completed, exited
+  current_node_id String?
+  started_at      DateTime  @default(now())
+  completed_at    DateTime?
+  exited_at       DateTime?
+  exit_reason     String?
+
+  // Relations
+  automation Automation @relation(fields: [automation_id], references: [id], onDelete: Cascade)
+  device     Device     @relation(fields: [device_id], references: [id], onDelete: Cascade)
+  deliveries Delivery[]
+
+  @@index([automation_id])
+  @@index([device_id])
+  @@index([store_id, status])
+  @@map("automation_runs")
+}
+
+model ScheduledJob {
+  id             String   @id @default(uuid()) @db.Uuid
+  store_id       String   @db.Uuid
+  job_type       String   // automation_step, campaign_send
+  reference_id   String   @db.Uuid
+  reference_type String   // automation_run, campaign
+  scheduled_for  DateTime
+  status         String   @default("pending") // pending, processing, completed, cancelled
+  payload        Json     @default("{}")
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([store_id, scheduled_for])
+  @@index([status, scheduled_for])
+  @@map("scheduled_jobs")
+}
+
+// =============================================================================
+// CAMPAIGNS & TEMPLATES
+// =============================================================================
+
+model Campaign {
+  id            String    @id @default(uuid()) @db.Uuid
+  store_id      String    @db.Uuid
+  name          String
+  description   String?
+  type          String    @default("one_time") // one_time, recurring, triggered
+  status        String    @default("draft") // draft, scheduled, sending, sent, paused, cancelled
+  segment_id    String?   @db.Uuid
+  template_id   String    @db.Uuid
+  scheduled_for DateTime?
+  timezone      String    @default("America/Sao_Paulo")
+  stats         Json      @default("{}")
+  sent_at       DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  // Relations
+  store      Store        @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  segment    Segment?     @relation(fields: [segment_id], references: [id])
+  template   PushTemplate @relation(fields: [template_id], references: [id])
+  deliveries Delivery[]
+
+  @@index([store_id])
+  @@index([store_id, status])
+  @@map("campaigns")
+}
+
+model PushTemplate {
+  id         String   @id @default(uuid()) @db.Uuid
+  store_id   String   @db.Uuid
+  name       String
+  title      Json     // { "pt-BR": "...", "en-US": "..." }
+  body       Json
+  image_url  String?
+  deeplink   String?
+  data       Json     @default("{}")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  store      Store      @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  campaigns  Campaign[]
+  deliveries Delivery[]
+
+  @@index([store_id])
+  @@map("push_templates")
+}
+
+model Delivery {
+  id                  String    @id @default(uuid()) @db.Uuid
+  store_id            String    @db.Uuid
+  campaign_id         String?   @db.Uuid
+  automation_id       String?   @db.Uuid
+  automation_run_id   String?   @db.Uuid
+  device_id           String    @db.Uuid
+  template_id         String    @db.Uuid
+  status              String    @default("pending") // pending, scheduled, sent, delivered, opened, clicked, failed, cancelled
+  scheduled_for       DateTime
+  sent_at             DateTime?
+  delivered_at        DateTime?
+  opened_at           DateTime?
+  clicked_at          DateTime?
+  failed_at           DateTime?
+  failure_reason      String?
+  provider_message_id String?
+  created_at          DateTime  @default(now())
+
+  // Relations
+  store          Store          @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  campaign       Campaign?      @relation(fields: [campaign_id], references: [id])
+  automation     Automation?    @relation(fields: [automation_id], references: [id])
+  automation_run AutomationRun? @relation(fields: [automation_run_id], references: [id])
+  device         Device         @relation(fields: [device_id], references: [id], onDelete: Cascade)
+  template       PushTemplate   @relation(fields: [template_id], references: [id])
+
+  @@unique([store_id, campaign_id, device_id, scheduled_for])
+  @@index([store_id, status])
+  @@index([device_id])
+  @@index([scheduled_for])
+  @@map("deliveries")
+}
+
+// =============================================================================
+// ORDERS & ATTRIBUTION
+// =============================================================================
+
+model Order {
+  id                   String   @id @default(uuid()) @db.Uuid
+  store_id             String   @db.Uuid
+  order_id             String   // External order ID
+  customer_id          String?  @db.Uuid
+  device_id            String?  @db.Uuid
+  status               String   @default("created") // created, paid, cancelled, refunded
+  source               String   @default("webhook") // webview, webhook, merged
+  order_total_amount_minor Int
+  currency             String
+  items_count          Int      @default(0)
+  metadata             Json     @default("{}")
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  // Relations
+  store        Store         @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  customer     Customer?     @relation(fields: [customer_id], references: [id])
+  attributions Attribution[]
+
+  @@unique([store_id, order_id])
+  @@index([store_id])
+  @@index([customer_id])
+  @@map("orders")
+}
+
+model Attribution {
+  id                    String   @id @default(uuid()) @db.Uuid
+  store_id              String   @db.Uuid
+  order_id              String   @db.Uuid
+  model                 String   // last_click, view_through, multi_touch
+  attributed_delivery_id String?  @db.Uuid
+  attributed_campaign_id String?  @db.Uuid
+  attributed_automation_id String? @db.Uuid
+  score                 Float    @default(1.0)
+  window_hours          Int      @default(48)
+  created_at            DateTime @default(now())
+
+  // Relations
+  order Order @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, order_id, model])
+  @@index([store_id])
+  @@map("attributions")
+}
+
+// =============================================================================
+// REMOTE CONFIG
+// =============================================================================
+
+model RemoteConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  store_id       String   @db.Uuid
+  config_version Int
+  key_id         String
+  payload        Json
+  signature      String
+  issued_at      DateTime
+  expires_at     DateTime
+  created_at     DateTime @default(now())
+
+  // Relations
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, config_version])
+  @@index([store_id])
+  @@map("remote_configs")
+}
+
+// =============================================================================
+// AUDIT LOGS
+// =============================================================================
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  store_id    String?  @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String   // create, update, delete, publish, etc.
+  resource    String   // campaign, automation, store, etc.
+  resource_id String?  @db.Uuid
+  changes     Json     @default("{}")
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime @default(now())
+
+  // Relations
+  store Store? @relation(fields: [store_id], references: [id], onDelete: SetNull)
+  user  User?  @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([store_id, created_at])
+  @@index([user_id, created_at])
+  @@index([resource, resource_id])
+  @@map("audit_logs")
+}

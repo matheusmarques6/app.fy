@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Turbo
+.turbo/
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Mobile
+apps/mobile/.dart_tool/
+apps/mobile/build/
+apps/mobile/*.iml
+apps/mobile/.metadata
+
+# Certificates and secrets (NEVER commit)
+*.p12
+*.p8
+*.mobileprovision
+*.keystore
+*.jks
+serviceAccountKey.json
+google-services.json
+GoogleService-Info.plist
+
+# Temporary
+tmp/
+temp/
+*.tmp
