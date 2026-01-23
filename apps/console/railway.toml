@@ -1,0 +1,13 @@
+# Railway deployment configuration for Console (Next.js)
+# This file configures the build and deploy settings for Railway
+
+[build]
+builder = "nixpacks"
+buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @appfy/shared build && pnpm --filter @appfy/console build"
+
+[deploy]
+startCommand = "pnpm --filter @appfy/console start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+healthcheckPath = "/api/auth/providers"
+healthcheckTimeout = 30
