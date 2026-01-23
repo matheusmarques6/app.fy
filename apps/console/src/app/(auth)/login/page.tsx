@@ -10,11 +10,13 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/stores';
   const error = searchParams.get('error');
+  const registered = searchParams.get('registered');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(error ? 'Invalid credentials' : '');
+  const successMessage = registered ? 'Account created! Please sign in.' : '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +41,12 @@ function LoginForm() {
   return (
     <div className="bg-gray-800 rounded-lg shadow-xl p-8">
       <form onSubmit={handleSubmit} className="space-y-6">
+        {successMessage && (
+          <div className="bg-green-500/10 border border-green-500/50 text-green-400 px-4 py-3 rounded-lg text-sm">
+            {successMessage}
+          </div>
+        )}
+
         {errorMessage && (
           <div className="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg text-sm">
             {errorMessage}

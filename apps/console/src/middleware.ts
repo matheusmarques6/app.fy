@@ -9,8 +9,9 @@ export default withAuth(
   {
     callbacks: {
       authorized: ({ token, req }) => {
-        // Allow access to login page without auth
-        if (req.nextUrl.pathname === '/login') {
+        const publicPaths = ['/login', '/register'];
+        // Allow access to public paths without auth
+        if (publicPaths.includes(req.nextUrl.pathname)) {
           return true;
         }
         // Require auth for all other pages
