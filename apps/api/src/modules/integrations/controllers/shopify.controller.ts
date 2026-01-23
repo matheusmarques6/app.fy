@@ -209,16 +209,39 @@ export class ShopifyController {
       }
     }
 
-    // 4. Use X-Shopify-Event-Id for dedupe (official Shopify recommendation)
-    // Fallback to webhook_id if event_id not present
+    // 4. Get integration to find store_id
+    const integration = await this.prisma.integration.findUnique({
+      where: { id: integrationId },
+      select: { store_id: true, shop_domain: true },
+    });
+
+    if (!integration) {
+      this.logger.warn(`Unknown integration ${integrationId}`);
+      return { received: true }; // Still 200 to prevent retries
+    }
+
+    // Validate shop domain matches
+    if (integration.shop_domain !== shopDomain) {
+      this.logger.warn(`Shop domain mismatch: expected ${integration.shop_domain}, got ${shopDomain}`);
+      return { received: true };
+    }
+
+    // 5. Use X-Shopify-Event-Id for dedupe (official Shopify recommendation)
     const dedupeKey = eventId || webhookId;
     if (!dedupeKey) {
       this.logger.error('Missing both X-Shopify-Event-Id and X-Shopify-Webhook-Id');
       throw new BadRequestException('Missing event identifier');
     }
 
+    // Check for duplicate using composite unique index (store_id, provider, webhook_event_id)
     const existingEvent = await this.prisma.webhookEvent.findUnique({
-      where: { webhook_event_id: dedupeKey },
+      where: {
+        store_id_provider_webhook_event_id: {
+          store_id: integration.store_id,
+          provider: 'shopify',
+          webhook_event_id: dedupeKey,
+        },
+      },
     });
 
     if (existingEvent) {
@@ -226,10 +249,11 @@ export class ShopifyController {
       return { received: true };
     }
 
-    // 5. Record webhook event with status tracking
+    // 6. Record webhook event with status tracking
     await this.prisma.webhookEvent.create({
       data: {
         webhook_event_id: dedupeKey,
+        store_id: integration.store_id,
         integration_id: integrationId,
         provider: 'shopify',
         topic,
@@ -239,11 +263,12 @@ export class ShopifyController {
       },
     });
 
-    // 6. Enqueue for async processing (ack fast)
+    // 7. Enqueue for async processing (ack fast)
     await this.integrationsQueue.add(
       'shopify-webhook',
       {
         webhookEventId: dedupeKey,
+        storeId: integration.store_id,
         integrationId,
         topic,
         shopDomain,

@@ -102,6 +102,7 @@ model Store {
   customers     Customer[]
   audit_logs    AuditLog[]
   remote_configs RemoteConfig[]
+  webhook_events WebhookEvent[]
 
   @@unique([account_id, slug])
   @@index([account_id])
@@ -728,7 +729,8 @@ model AuditLog {
 
 model WebhookEvent {
   id               String   @id @default(uuid()) @db.Uuid
-  webhook_event_id String   @unique // External webhook ID from provider
+  webhook_event_id String   // External event ID from provider (dedupe key)
+  store_id         String   @db.Uuid // Denormalized for faster lookups
   integration_id   String   @db.Uuid
   provider         String   // shopify, woocommerce
   topic            String   // orders/create, products/update, etc.
@@ -736,11 +738,15 @@ model WebhookEvent {
   status           String   @default("received") // received, processing, processed, failed
   attempts         Int      @default(0)
   last_error       String?
-  payload_hash     String?  // SHA256 of payload for replay detection
   received_at      DateTime @default(now())
   processed_at     DateTime?
   created_at       DateTime @default(now())
 
+  // Relations
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  // Unique: one event per store+provider+event_id (prevents cross-store collision)
+  @@unique([store_id, provider, webhook_event_id])
   @@index([integration_id])
   @@index([status])
   @@index([created_at])

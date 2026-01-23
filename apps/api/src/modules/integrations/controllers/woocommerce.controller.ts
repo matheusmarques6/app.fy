@@ -158,13 +158,15 @@ export class WooCommerceController {
     }
     const rawBodyStr = rawBody.toString('utf8');
 
-    // 2. Get integration to find webhook secret
+    // 2. Get integration to find webhook secret and store_id
     const integration = await this.prisma.integration.findUnique({
       where: { id: integrationId },
+      select: { store_id: true, metadata: true },
     });
 
     if (!integration) {
-      throw new UnauthorizedException('Invalid integration');
+      this.logger.warn(`Unknown integration ${integrationId}`);
+      return { received: true }; // Still 200 to prevent Woo retries
     }
 
     // 3. Validate signature using raw body
@@ -179,9 +181,15 @@ export class WooCommerceController {
     // 4. Generate delivery ID if not provided (for idempotency)
     const webhookEventId = deliveryId || createHash('sha256').update(rawBodyStr).digest('hex');
 
-    // 5. Check for duplicate (idempotency)
+    // 5. Check for duplicate using composite unique index
     const existingEvent = await this.prisma.webhookEvent.findUnique({
-      where: { webhook_event_id: webhookEventId },
+      where: {
+        store_id_provider_webhook_event_id: {
+          store_id: integration.store_id,
+          provider: 'woocommerce',
+          webhook_event_id: webhookEventId,
+        },
+      },
     });
 
     if (existingEvent) {
@@ -190,15 +198,14 @@ export class WooCommerceController {
     }
 
     // 6. Record webhook event with status tracking
-    const payloadHash = createHash('sha256').update(rawBodyStr).digest('hex');
     await this.prisma.webhookEvent.create({
       data: {
         webhook_event_id: webhookEventId,
+        store_id: integration.store_id,
         integration_id: integrationId,
         provider: 'woocommerce',
         topic,
         status: 'received',
-        payload_hash: payloadHash,
         received_at: new Date(),
       },
     });
@@ -208,6 +215,7 @@ export class WooCommerceController {
       'woocommerce-webhook',
       {
         webhookEventId,
+        storeId: integration.store_id,
         integrationId,
         topic,
         payload: JSON.parse(rawBodyStr),
