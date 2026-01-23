@@ -3,10 +3,10 @@
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Sidebar } from '@/components/sidebar';
-import { Header } from '@/components/header';
-import { useAppStore } from '@/lib/store';
-import { storesApi } from '@/lib/api-client';
+import { Sidebar } from '../../../../components/sidebar';
+import { Header } from '../../../../components/header';
+import { useAppStore } from '../../../../lib/store';
+import { storesApi } from '../../../../lib/api-client';
 
 export default function StoreLayout({
   children,

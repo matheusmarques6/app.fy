@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Plus, Store as StoreIcon, ArrowRight, Loader2 } from 'lucide-react';
-import { storesApi } from '@/lib/api-client';
-import { useAppStore, type Store } from '@/lib/store';
+import { storesApi } from '../../../lib/api-client';
+import { useAppStore, type Store } from '../../../lib/store';
 
 export default function StoresPage() {
   const { data: session, status } = useSession();

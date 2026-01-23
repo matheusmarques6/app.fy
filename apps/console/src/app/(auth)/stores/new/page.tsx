@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { storesApi } from '@/lib/api-client';
-import { useAppStore } from '@/lib/store';
+import { storesApi } from '../../../../lib/api-client';
+import { useAppStore } from '../../../../lib/store';
 
 export default function NewStorePage() {
   const { data: session } = useSession();

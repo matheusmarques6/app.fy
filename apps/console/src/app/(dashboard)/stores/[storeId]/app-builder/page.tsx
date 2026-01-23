@@ -17,7 +17,7 @@ import {
   History,
   RotateCcw,
 } from 'lucide-react';
-import { useAppStore } from '@/lib/store';
+import { useAppStore } from '../../../../../lib/store';
 
 type Tab = 'modules' | 'theme' | 'allowlist' | 'preview';
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAppStore } from '@/lib/store';
+import { useAppStore } from '../../../../../lib/store';
 import { Save, Key, Globe, Bell, Shield } from 'lucide-react';
 
 type Tab = 'general' | 'integrations' | 'push' | 'security';

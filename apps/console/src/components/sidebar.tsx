@@ -13,8 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useAppStore } from '@/lib/store';
+import { cn } from '../lib/utils';
+import { useAppStore } from '../lib/store';
 import { StoreSwitcher } from './store-switcher';
 
 const navigation = [

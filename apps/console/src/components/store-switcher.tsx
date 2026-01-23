@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, Store, Plus, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useAppStore } from '@/lib/store';
+import { cn } from '../lib/utils';
+import { useAppStore } from '../lib/store';
 
 interface StoreSwitcherProps {
   collapsed?: boolean;

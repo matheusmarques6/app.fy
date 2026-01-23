@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppStore } from '@/lib/store';
+import { useAppStore } from '../../../../../lib/store';
 import { BarChart3, Bell, Users, Smartphone } from 'lucide-react';
 
 export default function DashboardPage() {
