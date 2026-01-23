@@ -52,6 +52,7 @@ export const QUEUE_NAMES = {
   METRICS_UPDATE: 'metrics:update',
   SEGMENT_REFRESH: 'segment:refresh',
   AUTOMATION_EVAL: 'automation:eval',
+  CAMPAIGN_SCHEDULER: 'campaign:scheduler',
   CAMPAIGN_SEND: 'campaign:send',
   PUSH_SEND: 'push:send',
   INTEGRATIONS_SYNC: 'integrations:sync',
