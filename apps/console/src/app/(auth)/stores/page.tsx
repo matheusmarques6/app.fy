@@ -3,22 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Plus, Store, ArrowRight, Loader2 } from 'lucide-react';
+import { Plus, Store as StoreIcon, ArrowRight, Loader2 } from 'lucide-react';
 import { storesApi } from '@/lib/api-client';
-import { useAppStore } from '@/lib/store';
-
-interface StoreItem {
-  id: string;
-  name: string;
-  primary_domain: string;
-  created_at: string;
-}
+import { useAppStore, type Store } from '@/lib/store';
 
 export default function StoresPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { setStores, setCurrentStore } = useAppStore();
-  const [storeList, setStoreList] = useState<StoreItem[]>([]);
+  const [storeList, setStoreList] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,7 +31,7 @@ export default function StoresPage() {
     }
   }, [status, session, router, setStores]);
 
-  const handleSelectStore = (store: StoreItem) => {
+  const handleSelectStore = (store: Store) => {
     setCurrentStore(store);
     router.push(`/stores/${store.id}/dashboard`);
   };
@@ -68,7 +61,7 @@ export default function StoresPage() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-lg bg-blue-600/20 flex items-center justify-center">
-                  <Store className="text-blue-500" size={24} />
+                  <StoreIcon className="text-blue-500" size={24} />
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-white">{store.name}</h3>

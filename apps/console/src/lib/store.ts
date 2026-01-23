@@ -6,13 +6,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-interface Store {
+export interface Store {
   id: string;
   name: string;
-  slug: string;
-  platform: string;
+  slug?: string;
+  platform?: string;
   primary_domain: string;
-  status: string;
+  status?: string;
 }
 
 interface AppState {
