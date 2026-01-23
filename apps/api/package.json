@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prebuild": "cd ../.. && pnpm --filter @appfy/shared build",
     "build": "nest build",
     "dev": "nest start --watch",
     "dev:debug": "nest start --debug --watch",
