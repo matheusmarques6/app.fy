@@ -32,8 +32,8 @@ import {
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { QUEUE_NAMES } from '@appfy/shared';
 
-// Replay window: reject webhooks older than 5 minutes
-const WEBHOOK_REPLAY_WINDOW_MS = 5 * 60 * 1000;
+// Stale threshold: log warning for webhooks older than 5 minutes (but still process)
+const WEBHOOK_STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
 @Controller('integrations/shopify')
 export class ShopifyController {
@@ -168,8 +168,7 @@ export class ShopifyController {
    *
    * Security:
    * - HMAC validation using raw body
-   * - Replay window validation (5 min)
-   * - Idempotency via webhook_event_id
+   * - Idempotency via X-Shopify-Event-Id (official recommendation)
    *
    * Performance:
    * - Ack fast (respond 200)
@@ -182,7 +181,8 @@ export class ShopifyController {
     @Headers('x-shopify-topic') topic: string,
     @Headers('x-shopify-shop-domain') shopDomain: string,
     @Headers('x-shopify-hmac-sha256') hmacHeader: string,
-    @Headers('x-shopify-webhook-id') webhookId: string,
+    @Headers('x-shopify-event-id') eventId: string, // Official dedupe key
+    @Headers('x-shopify-webhook-id') webhookId: string, // Webhook registration ID (fallback)
     @Headers('x-shopify-triggered-at') triggeredAt: string,
     @Req() req: RawBodyRequest<Request>,
   ): Promise<{ received: boolean }> {
@@ -199,38 +199,42 @@ export class ShopifyController {
       throw new UnauthorizedException('Invalid signature');
     }
 
-    // 3. Validate replay window (reject webhooks older than 5 minutes)
+    // 3. Log stale webhooks but still process (delays can happen)
     if (triggeredAt) {
       const triggerTime = new Date(triggeredAt).getTime();
-      const now = Date.now();
-      if (now - triggerTime > WEBHOOK_REPLAY_WINDOW_MS) {
-        this.logger.warn(`Webhook ${webhookId} rejected: too old (triggered at ${triggeredAt})`);
-        // Still return 200 to prevent Shopify from retrying
-        return { received: true };
+      const ageMs = Date.now() - triggerTime;
+      if (ageMs > WEBHOOK_STALE_THRESHOLD_MS) {
+        this.logger.warn(`Stale webhook ${eventId}: triggered ${Math.round(ageMs / 1000)}s ago`);
+        // Continue processing - idempotency handles duplicates
       }
     }
 
-    // 4. Check for duplicate (idempotency)
+    // 4. Use X-Shopify-Event-Id for dedupe (official Shopify recommendation)
+    // Fallback to webhook_id if event_id not present
+    const dedupeKey = eventId || webhookId;
+    if (!dedupeKey) {
+      this.logger.error('Missing both X-Shopify-Event-Id and X-Shopify-Webhook-Id');
+      throw new BadRequestException('Missing event identifier');
+    }
+
     const existingEvent = await this.prisma.webhookEvent.findUnique({
-      where: { webhook_event_id: webhookId },
+      where: { webhook_event_id: dedupeKey },
     });
 
     if (existingEvent) {
-      this.logger.log(`Duplicate webhook ${webhookId} - ignoring`);
+      this.logger.log(`Duplicate webhook ${dedupeKey} - ignoring`);
       return { received: true };
     }
 
     // 5. Record webhook event with status tracking
-    const payloadHash = this.shopifyService.hashPayload(rawBodyStr);
     await this.prisma.webhookEvent.create({
       data: {
-        webhook_event_id: webhookId,
+        webhook_event_id: dedupeKey,
         integration_id: integrationId,
         provider: 'shopify',
         topic,
         shop_domain: shopDomain,
         status: 'received',
-        payload_hash: payloadHash,
         received_at: new Date(),
       },
     });
@@ -239,7 +243,7 @@ export class ShopifyController {
     await this.integrationsQueue.add(
       'shopify-webhook',
       {
-        webhookEventId: webhookId,
+        webhookEventId: dedupeKey,
         integrationId,
         topic,
         shopDomain,
@@ -256,7 +260,7 @@ export class ShopifyController {
       },
     );
 
-    this.logger.log(`Webhook ${webhookId} (${topic}) queued for processing`);
+    this.logger.log(`Webhook ${dedupeKey} (${topic}) queued for processing`);
     return { received: true };
   }
 
