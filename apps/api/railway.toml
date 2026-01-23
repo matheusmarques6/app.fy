@@ -1,6 +1,7 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @appfy/shared build && cd apps/api && pnpm db:generate && pnpm build"
+installCommand = "npm install -g pnpm@9 && cd ../.. && pnpm install --frozen-lockfile"
+buildCommand = "cd ../.. && pnpm --filter @appfy/shared build && cd apps/api && pnpm db:generate && pnpm build"
 
 [deploy]
 startCommand = "pnpm db:migrate:prod && node dist/main.js"
