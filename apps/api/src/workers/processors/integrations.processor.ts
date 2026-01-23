@@ -55,19 +55,27 @@ export class IntegrationsProcessor extends WorkerHost {
   /**
    * Acquire processing lock using atomic status update
    * Returns true if lock acquired, false if already processing/processed
+   *
+   * Allows lock acquisition when:
+   * - status = 'received' (new event)
+   * - status = 'failed' (retry after failure)
+   *
+   * Blocks when:
+   * - status = 'processing' (concurrent execution)
+   * - status = 'processed' (already completed)
    */
   private async acquireProcessingLock(
     storeId: string,
     provider: string,
     webhookEventId: string,
   ): Promise<boolean> {
-    // Atomic update: only set to processing if currently received
+    // Atomic update: only set to processing if received or failed (allows retry)
     const result = await this.prisma.webhookEvent.updateMany({
       where: {
         store_id: storeId,
         provider,
         webhook_event_id: webhookEventId,
-        status: 'received', // Only if not already processing
+        status: { in: ['received', 'failed'] }, // Allow retry on failure
       },
       data: {
         status: 'processing',

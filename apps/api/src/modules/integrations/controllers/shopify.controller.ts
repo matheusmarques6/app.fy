@@ -31,6 +31,7 @@ import {
 } from '../dto/shopify.dto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { QUEUE_NAMES } from '@appfy/shared';
+import { createHash } from 'crypto';
 
 // Stale threshold: log warning for webhooks older than 5 minutes (but still process)
 const WEBHOOK_STALE_THRESHOLD_MS = 5 * 60 * 1000;
@@ -182,7 +183,6 @@ export class ShopifyController {
     @Headers('x-shopify-shop-domain') shopDomain: string,
     @Headers('x-shopify-hmac-sha256') hmacHeader: string,
     @Headers('x-shopify-event-id') eventId: string, // Official dedupe key
-    @Headers('x-shopify-webhook-id') webhookId: string, // Webhook registration ID (fallback)
     @Headers('x-shopify-triggered-at') triggeredAt: string,
     @Req() req: RawBodyRequest<Request>,
   ): Promise<{ received: boolean }> {
@@ -227,11 +227,10 @@ export class ShopifyController {
     }
 
     // 5. Use X-Shopify-Event-Id for dedupe (official Shopify recommendation)
-    const dedupeKey = eventId || webhookId;
-    if (!dedupeKey) {
-      this.logger.error('Missing both X-Shopify-Event-Id and X-Shopify-Webhook-Id');
-      throw new BadRequestException('Missing event identifier');
-    }
+    // Fallback: hash of topic + triggeredAt + payload (webhookId is subscription ID, not delivery ID)
+    const dedupeKey = eventId || createHash('sha256')
+      .update(`${topic}:${triggeredAt || ''}:${rawBodyStr}`)
+      .digest('hex');
 
     // Check for duplicate using composite unique index (store_id, provider, webhook_event_id)
     const existingEvent = await this.prisma.webhookEvent.findUnique({
