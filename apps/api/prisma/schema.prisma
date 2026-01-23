@@ -278,6 +278,7 @@ model Device {
   sessions          DeviceSession[]
   events            Event[]
   deliveries        Delivery[]
+  orders            Order[]
   user_metrics      UserMetrics?
   segment_memberships SegmentMembership[]
   automation_runs   AutomationRun[]
@@ -620,28 +621,35 @@ model Delivery {
 // =============================================================================
 
 model Order {
-  id                   String   @id @default(uuid()) @db.Uuid
-  store_id             String   @db.Uuid
-  order_id             String   // External order ID
-  customer_id          String?  @db.Uuid
-  device_id            String?  @db.Uuid
-  status               String   @default("created") // created, paid, cancelled, refunded
-  source               String   @default("webhook") // webview, webhook, merged
-  order_total_amount_minor Int
-  currency             String
-  items_count          Int      @default(0)
-  metadata             Json     @default("{}")
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
+  id                      String   @id @default(uuid()) @db.Uuid
+  store_id                String   @db.Uuid
+  order_id                String   // External order ID
+  order_number            String?  // Display order number
+  customer_id             String?  @db.Uuid
+  device_id               String?  @db.Uuid
+  external_customer_id    String?  // External customer ID from platform
+  email_hash              String?  // Hashed email for linking
+  status                  String   @default("created") // created, paid, cancelled, refunded
+  source                  String   @default("webhook") // webview, webhook, merged
+  total_amount_minor      Int      // Total in minor units (centavos)
+  subtotal_amount_minor   Int?     // Subtotal in minor units
+  currency                String
+  items_count             Int      @default(0)
+  metadata                Json     @default("{}")
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
 
   // Relations
   store        Store         @relation(fields: [store_id], references: [id], onDelete: Cascade)
   customer     Customer?     @relation(fields: [customer_id], references: [id])
+  device       Device?       @relation(fields: [device_id], references: [id])
   attributions Attribution[]
 
   @@unique([store_id, order_id])
   @@index([store_id])
   @@index([customer_id])
+  @@index([device_id])
+  @@index([email_hash])
   @@map("orders")
 }
 
@@ -712,4 +720,22 @@ model AuditLog {
   @@index([user_id, created_at])
   @@index([resource, resource_id])
   @@map("audit_logs")
+}
+
+// =============================================================================
+// WEBHOOK EVENTS (for idempotency/dedupe)
+// =============================================================================
+
+model WebhookEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  webhook_event_id String   @unique // External webhook ID from provider
+  integration_id   String   @db.Uuid
+  topic            String   // orders/create, products/update, etc.
+  shop_domain      String?
+  processed_at     DateTime @default(now())
+  created_at       DateTime @default(now())
+
+  @@index([integration_id])
+  @@index([created_at])
+  @@map("webhook_events")
 }
