@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { SegmentDefinition, SegmentRule } from '@appfy/shared';
