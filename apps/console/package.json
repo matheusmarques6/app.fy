@@ -10,14 +10,14 @@
   },
   "dependencies": {
     "@appfy/shared": "workspace:*",
+    "clsx": "^2.1.0",
+    "lucide-react": "^0.312.0",
     "next": "14.2.35",
     "next-auth": "^4.24.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zustand": "^4.5.0",
-    "lucide-react": "^0.312.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.2.0",
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
