@@ -152,7 +152,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    if (payload.typ !== 'device_refresh') {
+    if ((payload as any).typ !== 'device_refresh') {
       throw new UnauthorizedException('Invalid token type');
     }
 

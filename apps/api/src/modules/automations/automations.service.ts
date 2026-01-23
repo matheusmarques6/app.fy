@@ -219,11 +219,11 @@ export class AutomationsService {
     // Validate edges reference existing nodes
     const nodeIds = new Set(flow.nodes.map((n) => n.id));
     for (const edge of flow.edges) {
-      if (!nodeIds.has(edge.source)) {
-        throw new BadRequestException(`Invalid edge: source node ${edge.source} not found`);
+      if (!nodeIds.has(edge.source_node_id)) {
+        throw new BadRequestException(`Invalid edge: source node ${edge.source_node_id} not found`);
       }
-      if (!nodeIds.has(edge.target)) {
-        throw new BadRequestException(`Invalid edge: target node ${edge.target} not found`);
+      if (!nodeIds.has(edge.target_node_id)) {
+        throw new BadRequestException(`Invalid edge: target node ${edge.target_node_id} not found`);
       }
     }
   }

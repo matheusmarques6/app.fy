@@ -37,7 +37,7 @@ export class EventsController {
     return this.eventsService.ingestEvents(
       device.storeId,
       device.deviceId,
-      dto,
+      dto as any,
     );
   }
 }

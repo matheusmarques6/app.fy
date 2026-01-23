@@ -27,7 +27,7 @@ export class AuthController {
   @Throttle({ short: { limit: 10, ttl: 60000 } }) // 10 requests per minute
   @HttpCode(HttpStatus.OK)
   async registerDevice(@Body() dto: RegisterDeviceDto) {
-    return this.authService.registerDevice(dto);
+    return this.authService.registerDevice(dto as any);
   }
 
   /**

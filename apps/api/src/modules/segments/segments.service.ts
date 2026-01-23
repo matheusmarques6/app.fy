@@ -234,9 +234,9 @@ export class SegmentsService {
       case '<=':
         return Number(actualValue) <= Number(value);
       case 'in':
-        return Array.isArray(value) && value.includes(actualValue);
+        return Array.isArray(value) && (value as any[]).includes(actualValue);
       case 'not_in':
-        return Array.isArray(value) && !value.includes(actualValue);
+        return Array.isArray(value) && !(value as any[]).includes(actualValue);
       case 'exists':
         return actualValue !== null && actualValue !== undefined;
       case 'not_exists':

@@ -43,7 +43,7 @@ export class RemoteConfigService {
     const cached = await this.redis.get(cacheKey);
 
     if (cached) {
-      const envelope = JSON.parse(cached) as RemoteConfigEnvelope;
+      const envelope = JSON.parse(cached as string) as RemoteConfigEnvelope;
       const etag = this.generateETag(envelope);
       return { envelope, etag };
     }
