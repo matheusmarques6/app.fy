@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "openssl"]
+aptPkgs = []
+cmds = ["corepack enable && corepack prepare pnpm@9.0.0 --activate"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = [
+  "pnpm --filter @appfy/shared build",
+  "pnpm --filter @appfy/api db:generate",
+  "pnpm --filter @appfy/api build"
+]
+
+[start]
+cmd = "cd apps/api && pnpm db:migrate:prod && node dist/main.js"
