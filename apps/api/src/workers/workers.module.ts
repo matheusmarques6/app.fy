@@ -7,6 +7,9 @@ import { QUEUE_NAMES } from '@appfy/shared';
 import { PrismaModule } from '../common/prisma/prisma.module';
 import { RedisModule } from '../common/redis/redis.module';
 
+// Feature modules
+import { PushModule } from '../modules/push/push.module';
+
 // Processors
 import { EventsProcessor } from './processors/events.processor';
 import { MetricsProcessor } from './processors/metrics.processor';
@@ -41,6 +44,7 @@ import { CampaignProcessor } from './processors/campaign.processor';
 
     PrismaModule,
     RedisModule,
+    PushModule,
   ],
   providers: [
     EventsProcessor,
