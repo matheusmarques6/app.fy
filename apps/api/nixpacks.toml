@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm", "openssl"]
+
+[phases.install]
+cmds = ["cd ../.. && pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["cd ../.. && pnpm --filter @appfy/shared build && cd apps/api && pnpm db:generate && pnpm build"]
+
+[start]
+cmd = "pnpm db:migrate:prod && node dist/main.js"
