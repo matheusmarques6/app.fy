@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "SaaS E-commerce App Builder - Transform stores into mobile apps",
+  "pnpm": {
+    "overrides": {
+      "glob": ">=10.5.0",
+      "tar": ">=7.5.4",
+      "lodash": ">=4.17.23",
+      "tmp": ">=0.2.4"
+    }
+  },
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",

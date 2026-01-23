@@ -22,14 +22,14 @@
   },
   "dependencies": {
     "@appfy/shared": "workspace:*",
+    "@nestjs/bullmq": "^10.0.1",
     "@nestjs/common": "^10.3.0",
-    "@nestjs/config": "^3.1.0",
+    "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^10.3.0",
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/throttler": "^5.1.0",
-    "@nestjs/bullmq": "^10.0.1",
     "@prisma/client": "^5.8.0",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.1.0",
@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@appfy/tsconfig": "workspace:*",
-    "@nestjs/cli": "^10.3.0",
+    "@nestjs/cli": "^11.0.16",
     "@nestjs/schematics": "^10.1.0",
     "@nestjs/testing": "^10.3.0",
     "@types/bcrypt": "^5.0.2",
@@ -73,13 +73,19 @@
     "typescript": "^5.3.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }
