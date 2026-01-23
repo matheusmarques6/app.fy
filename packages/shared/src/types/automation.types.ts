@@ -1,3 +1,5 @@
+import type { SegmentRule } from './segment.types.js';
+
 export interface Automation {
   id: string;
   store_id: string;
