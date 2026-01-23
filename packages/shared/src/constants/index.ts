@@ -48,17 +48,17 @@ export const WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 300; // 5 minutes
 
 // Queues
 export const QUEUE_NAMES = {
-  EVENTS_INGEST: 'events:ingest',
-  METRICS_UPDATE: 'metrics:update',
-  SEGMENT_REFRESH: 'segment:refresh',
-  AUTOMATION_EVAL: 'automation:eval',
-  CAMPAIGN_SCHEDULER: 'campaign:scheduler',
-  CAMPAIGN_SEND: 'campaign:send',
-  PUSH_SEND: 'push:send',
-  INTEGRATIONS_SYNC: 'integrations:sync',
-  AI_JOBS: 'ai:jobs',
-  BUILD: 'build:jobs',
-  PUBLISH: 'publish:jobs',
+  EVENTS_INGEST: 'events-ingest',
+  METRICS_UPDATE: 'metrics-update',
+  SEGMENT_REFRESH: 'segment-refresh',
+  AUTOMATION_EVAL: 'automation-eval',
+  CAMPAIGN_SCHEDULER: 'campaign-scheduler',
+  CAMPAIGN_SEND: 'campaign-send',
+  PUSH_SEND: 'push-send',
+  INTEGRATIONS_SYNC: 'integrations-sync',
+  AI_JOBS: 'ai-jobs',
+  BUILD: 'build-jobs',
+  PUBLISH: 'publish-jobs',
 } as const;
 
 // Event Names (allowed)
