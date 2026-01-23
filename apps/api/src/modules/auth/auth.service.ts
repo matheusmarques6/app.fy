@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { createHash, randomUUID } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import {
   JWT_ACCESS_TOKEN_TTL,
   JWT_REFRESH_TOKEN_TTL,
@@ -16,6 +17,21 @@ import type {
   DeviceRegisterResponse,
   DeviceTokenClaims,
 } from '@appfy/shared';
+
+interface HumanTokenClaims {
+  iss: string;
+  aud: string;
+  typ: 'human_access' | 'human_refresh';
+  sub: string;
+  jti: string;
+  iat: number;
+  exp: number;
+  user_id: string;
+  account_id: string;
+  email: string;
+  name: string;
+  role: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -264,5 +280,196 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  // ==================== HUMAN (Console) AUTH ====================
+
+  /**
+   * Login a human user (for Console)
+   */
+  async loginHuman(
+    email: string,
+    password: string,
+  ): Promise<{ access_token: string; user: any }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      include: {
+        account: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    // Create human access token
+    const accessToken = await this.createHumanToken(user);
+
+    return {
+      access_token: accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        account_id: user.account_id,
+        role: user.role,
+      },
+    };
+  }
+
+  /**
+   * Register a new human user (for Console)
+   */
+  async registerHuman(
+    email: string,
+    password: string,
+    name: string,
+  ): Promise<{ access_token: string; user: any }> {
+    const existing = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Email already in use');
+    }
+
+    // Create account and user in a transaction
+    const result = await this.prisma.$transaction(async (tx: typeof this.prisma) => {
+      // Create account
+      const account = await tx.account.create({
+        data: {
+          name: `${name}'s Account`,
+          plan: 'free',
+        },
+      });
+
+      // Hash password
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          account_id: account.id,
+          email: email.toLowerCase(),
+          name,
+          password_hash: passwordHash,
+          role: 'owner',
+        },
+      });
+
+      return { account, user };
+    });
+
+    // Create human access token
+    const accessToken = await this.createHumanToken(result.user);
+
+    return {
+      access_token: accessToken,
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        account_id: result.user.account_id,
+        role: result.user.role,
+      },
+    };
+  }
+
+  /**
+   * Validate human token and return claims
+   */
+  async validateHumanToken(token: string): Promise<HumanTokenClaims | null> {
+    try {
+      const payload = this.jwtService.verify<HumanTokenClaims>(token);
+
+      if (payload.typ !== 'human_access') {
+        return null;
+      }
+
+      // Check if token is denylisted
+      if (await this.redis.isTokenDenylisted(payload.jti)) {
+        return null;
+      }
+
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get current user profile
+   */
+  async getHumanProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        account: true,
+        store_memberships: {
+          include: {
+            store: {
+              select: {
+                id: true,
+                name: true,
+                primary_domain: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      account: {
+        id: user.account.id,
+        name: user.account.name,
+        plan: user.account.plan,
+      },
+      stores: user.store_memberships.map((m: any) => ({
+        id: m.store.id,
+        name: m.store.name,
+        primary_domain: m.store.primary_domain,
+        role: m.role,
+      })),
+    };
+  }
+
+  /**
+   * Create human access token
+   */
+  private async createHumanToken(user: any): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    const jti = randomUUID();
+
+    // Human tokens last longer (1 hour)
+    const humanTokenTtl = 60 * 60;
+
+    return this.jwtService.sign({
+      iss: JWT_ISSUER,
+      aud: JWT_AUDIENCE_USER,
+      typ: 'human_access',
+      sub: user.id,
+      jti,
+      iat: now,
+      exp: now + humanTokenTtl,
+      user_id: user.id,
+      account_id: user.account_id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    } as HumanTokenClaims);
   }
 }

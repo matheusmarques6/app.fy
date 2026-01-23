@@ -1,0 +1,10 @@
+# Use this file for the Workers service in Railway
+# Copy to railway.toml when deploying the workers service
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "node dist/workers.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
