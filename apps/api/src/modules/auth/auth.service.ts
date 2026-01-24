@@ -4,7 +4,6 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
-import { EmailService } from '../../common/email/email.service';
 import { createHash, randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import {
@@ -44,7 +43,6 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
-    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -549,8 +547,12 @@ export class AuthService {
     const consoleUrl = this.configService.get<string>('CONSOLE_BASE_URL', 'http://localhost:3001');
     const resetUrl = `${consoleUrl}/reset-password?token=${resetToken}`;
 
-    // Send password reset email
-    await this.emailService.sendPasswordResetEmail(email, resetUrl);
+    // Log the reset link (for development/debugging)
+    // TODO: Replace with actual email sending
+    this.logger.log(`=================================================`);
+    this.logger.log(`PASSWORD RESET LINK for ${email}:`);
+    this.logger.log(resetUrl);
+    this.logger.log(`=================================================`);
 
     return { message: 'If an account exists with this email, you will receive a password reset link.' };
   }
