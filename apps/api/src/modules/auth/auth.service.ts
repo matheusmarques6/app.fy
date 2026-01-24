@@ -21,7 +21,7 @@ import type {
 interface HumanTokenClaims {
   iss?: string;
   aud: string;
-  typ: 'human_access' | 'human_refresh';
+  typ: 'user_access';
   sub: string;
   jti: string;
   iat: number;
@@ -413,7 +413,7 @@ export class AuthService {
     try {
       const payload = this.jwtService.verify<HumanTokenClaims>(token);
 
-      if (payload.typ !== 'human_access') {
+      if (payload.typ !== 'user_access') {
         return null;
       }
 
@@ -490,7 +490,7 @@ export class AuthService {
 
     return this.jwtService.sign({
       aud: JWT_AUDIENCE_USER,
-      typ: 'human_access',
+      typ: 'user_access',
       sub: user.id,
       jti,
       iat: now,
