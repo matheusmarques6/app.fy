@@ -9,7 +9,6 @@ import * as bcrypt from 'bcrypt';
 import {
   JWT_ACCESS_TOKEN_TTL,
   JWT_REFRESH_TOKEN_TTL,
-  JWT_ISSUER,
   JWT_AUDIENCE_DEVICE,
   JWT_AUDIENCE_USER,
 } from '@appfy/shared';
@@ -20,7 +19,7 @@ import type {
 } from '@appfy/shared';
 
 interface HumanTokenClaims {
-  iss: string;
+  iss?: string;
   aud: string;
   typ: 'human_access' | 'human_refresh';
   sub: string;
@@ -235,37 +234,31 @@ export class AuthService {
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
 
-    const accessToken = this.jwtService.sign(
-      {
-        iss: JWT_ISSUER,
-        aud: JWT_AUDIENCE_DEVICE,
-        typ: 'device_access',
-        sub: deviceId,
-        jti: accessJti,
-        iat: now,
-        exp: now + JWT_ACCESS_TOKEN_TTL,
-        store_id: storeId,
-        app_id: appId,
-        device_id: deviceId,
-        session_id: familyId,
-      } as DeviceTokenClaims,
-    );
+    const accessToken = this.jwtService.sign({
+      aud: JWT_AUDIENCE_DEVICE,
+      typ: 'device_access',
+      sub: deviceId,
+      jti: accessJti,
+      iat: now,
+      exp: now + JWT_ACCESS_TOKEN_TTL,
+      store_id: storeId,
+      app_id: appId,
+      device_id: deviceId,
+      session_id: familyId,
+    });
 
-    const refreshToken = this.jwtService.sign(
-      {
-        iss: JWT_ISSUER,
-        aud: JWT_AUDIENCE_DEVICE,
-        typ: 'device_refresh',
-        sub: deviceId,
-        jti: refreshJti,
-        iat: now,
-        exp: now + JWT_REFRESH_TOKEN_TTL,
-        store_id: storeId,
-        app_id: appId,
-        device_id: deviceId,
-        session_id: familyId,
-      },
-    );
+    const refreshToken = this.jwtService.sign({
+      aud: JWT_AUDIENCE_DEVICE,
+      typ: 'device_refresh',
+      sub: deviceId,
+      jti: refreshJti,
+      iat: now,
+      exp: now + JWT_REFRESH_TOKEN_TTL,
+      store_id: storeId,
+      app_id: appId,
+      device_id: deviceId,
+      session_id: familyId,
+    });
 
     // Store refresh token hash for rotation detection
     const refreshHash = this.hashToken(refreshToken);
@@ -496,7 +489,6 @@ export class AuthService {
     const humanTokenTtl = 60 * 60;
 
     return this.jwtService.sign({
-      iss: JWT_ISSUER,
       aud: JWT_AUDIENCE_USER,
       typ: 'human_access',
       sub: user.id,
@@ -508,7 +500,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       role: user.role,
-    } as HumanTokenClaims);
+    });
   }
 
   // ==================== PASSWORD RESET ====================
