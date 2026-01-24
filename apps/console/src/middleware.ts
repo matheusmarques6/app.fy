@@ -9,7 +9,7 @@ export default withAuth(
   {
     callbacks: {
       authorized: ({ token, req }) => {
-        const publicPaths = ['/login', '/register'];
+        const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password'];
         // Allow access to public paths without auth
         if (publicPaths.includes(req.nextUrl.pathname)) {
           return true;

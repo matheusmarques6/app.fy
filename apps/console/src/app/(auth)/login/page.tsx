@@ -11,12 +11,16 @@ function LoginForm() {
   const callbackUrl = searchParams.get('callbackUrl') || '/stores';
   const error = searchParams.get('error');
   const registered = searchParams.get('registered');
+  const reset = searchParams.get('reset');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(error ? 'Invalid credentials' : '');
-  const successMessage = registered ? 'Account created! Please sign in.' : '';
+
+  let successMessage = '';
+  if (registered) successMessage = 'Account created! Please sign in.';
+  if (reset) successMessage = 'Password reset successful! Please sign in with your new password.';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +96,12 @@ function LoginForm() {
         </button>
       </form>
 
-      <div className="mt-6 text-center">
+      <div className="mt-6 space-y-3 text-center">
+        <p className="text-gray-400 text-sm">
+          <a href="/forgot-password" className="text-blue-400 hover:text-blue-300">
+            Forgot your password?
+          </a>
+        </p>
         <p className="text-gray-400 text-sm">
           Don't have an account?{' '}
           <a href="/register" className="text-blue-400 hover:text-blue-300">

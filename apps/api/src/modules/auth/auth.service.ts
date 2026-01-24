@@ -510,4 +510,96 @@ export class AuthService {
       role: user.role,
     } as HumanTokenClaims);
   }
+
+  // ==================== PASSWORD RESET ====================
+
+  /**
+   * Request password reset - generates token and logs reset link
+   * TODO: Send email when email service is configured
+   */
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      this.logger.log(`Password reset requested for non-existent email: ${email}`);
+      return { message: 'If an account exists with this email, you will receive a password reset link.' };
+    }
+
+    // Generate secure token
+    const resetToken = randomUUID();
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Hash the token before storing (so it's not exposed if DB is compromised)
+    const hashedToken = createHash('sha256').update(resetToken).digest('hex');
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password_reset_token: hashedToken,
+        password_reset_expires: resetExpires,
+      },
+    });
+
+    // Build reset URL
+    const consoleUrl = this.configService.get<string>('CONSOLE_BASE_URL', 'http://localhost:3001');
+    const resetUrl = `${consoleUrl}/reset-password?token=${resetToken}`;
+
+    // Log the reset link (for development/debugging)
+    // TODO: Replace with actual email sending
+    this.logger.log(`=================================================`);
+    this.logger.log(`PASSWORD RESET LINK for ${email}:`);
+    this.logger.log(resetUrl);
+    this.logger.log(`=================================================`);
+
+    return { message: 'If an account exists with this email, you will receive a password reset link.' };
+  }
+
+  /**
+   * Reset password using token
+   */
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    if (!token || !newPassword) {
+      throw new BadRequestException('Token and new password are required');
+    }
+
+    if (newPassword.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
+
+    // Hash the provided token to compare with stored hash
+    const hashedToken = createHash('sha256').update(token).digest('hex');
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        password_reset_token: hashedToken,
+        password_reset_expires: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    // Update password and clear reset token
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password_hash: passwordHash,
+        password_reset_token: null,
+        password_reset_expires: null,
+      },
+    });
+
+    this.logger.log(`Password reset successful for user: ${user.email}`);
+
+    return { message: 'Password has been reset successfully. You can now login with your new password.' };
+  }
 }

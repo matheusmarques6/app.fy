@@ -74,4 +74,28 @@ export class AuthController {
   async me(@Request() req: any) {
     return this.authService.getHumanProfile(req.user.user_id);
   }
+
+  // ==================== PASSWORD RESET ====================
+
+  /**
+   * Request password reset
+   * POST /v1/auth/forgot-password
+   */
+  @Post('forgot-password')
+  @Throttle({ short: { limit: 3, ttl: 60000 } }) // 3 requests per minute
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() body: { email: string }) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  /**
+   * Reset password with token
+   * POST /v1/auth/reset-password
+   */
+  @Post('reset-password')
+  @Throttle({ short: { limit: 5, ttl: 60000 } }) // 5 attempts per minute
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() body: { token: string; password: string }) {
+    return this.authService.resetPassword(body.token, body.password);
+  }
 }

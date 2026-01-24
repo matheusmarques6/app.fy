@@ -35,16 +35,18 @@ model Account {
 }
 
 model User {
-  id              String   @id @default(uuid()) @db.Uuid
-  email           String   @unique
-  email_verified  Boolean  @default(false)
-  password_hash   String?
-  name            String?
-  avatar_url      String?
-  auth_provider   String   @default("email") // email, google, github
-  auth_provider_id String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id                     String    @id @default(uuid()) @db.Uuid
+  email                  String    @unique
+  email_verified         Boolean   @default(false)
+  password_hash          String?
+  name                   String?
+  avatar_url             String?
+  auth_provider          String    @default("email") // email, google, github
+  auth_provider_id       String?
+  password_reset_token   String?
+  password_reset_expires DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
 
   // Relations
   account_memberships AccountMembership[]
