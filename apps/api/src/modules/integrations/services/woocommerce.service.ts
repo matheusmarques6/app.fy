@@ -1,7 +1,10 @@
 import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual, scryptSync } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { QUEUE_NAMES } from '@appfy/shared';
 import {
   WooCommerceConnectDto,
   WooCommerceProductDto,
@@ -24,6 +27,8 @@ export class WooCommerceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
+    private readonly integrationsQueue: Queue,
   ) {
     // Derive encryption key from secret
     const secret = this.config.get<string>('ENCRYPTION_SECRET') || 'default-encryption-secret-change-me';
@@ -113,13 +118,14 @@ export class WooCommerceService {
 
   /**
    * Register all required webhooks
+   * Returns summary of registration results
    */
   async registerWebhooks(
     integrationId: string,
     storeUrl: string,
     consumerKey: string,
     consumerSecret: string,
-  ): Promise<void> {
+  ): Promise<{ registered: string[]; failed: string[] }> {
     const webhookBaseUrl = this.config.get<string>('WEBHOOK_BASE_URL');
 
     const topics = [
@@ -131,6 +137,9 @@ export class WooCommerceService {
       { name: 'customer.created', topic: 'customer.created' },
       { name: 'customer.updated', topic: 'customer.updated' },
     ];
+
+    const registered: string[] = [];
+    const failed: string[] = [];
 
     for (const { name, topic } of topics) {
       try {
@@ -172,11 +181,40 @@ export class WooCommerceService {
           },
         });
 
+        registered.push(topic);
         this.logger.log(`Registered WooCommerce webhook: ${topic} for integration ${integrationId}`);
       } catch (error) {
+        failed.push(topic);
         this.logger.error(`Failed to register WooCommerce webhook ${topic}:`, error);
+
+        // Track failed webhook in database
+        const deliveryUrl = `${webhookBaseUrl}/v1/integrations/woocommerce/webhooks/${integrationId}`;
+        await this.prisma.integrationWebhook.upsert({
+          where: {
+            integration_id_topic: {
+              integration_id: integrationId,
+              topic,
+            },
+          },
+          create: {
+            integration_id: integrationId,
+            topic,
+            address: deliveryUrl,
+            status: 'failed',
+          },
+          update: {
+            status: 'failed',
+          },
+        }).catch(() => {}); // Don't fail if we can't track the failure
       }
     }
+
+    // Log summary
+    this.logger.log(
+      `WooCommerce webhook registration complete for ${integrationId}: ${registered.length} registered, ${failed.length} failed`,
+    );
+
+    return { registered, failed };
   }
 
   /**
@@ -329,10 +367,14 @@ export class WooCommerceService {
       },
     });
 
-    // If paid, trigger attribution
+    // If paid, queue attribution calculation
     if (isPaid) {
-      this.logger.log(`WooCommerce order ${order.id} paid - triggering attribution`);
-      // TODO: Queue attribution calculation
+      await this.integrationsQueue.add('attribution-calculation', {
+        storeId,
+        orderId: dbOrder.id,
+        platform: 'woocommerce',
+      });
+      this.logger.log(`WooCommerce order ${order.id} paid - queued attribution calculation`);
     }
 
     // Link to device if we can

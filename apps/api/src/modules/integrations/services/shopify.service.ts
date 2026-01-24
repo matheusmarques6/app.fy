@@ -1,7 +1,10 @@
 import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual, createHash, scryptSync } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { QUEUE_NAMES } from '@appfy/shared';
 import {
   ShopifyOAuthCallbackDto,
   ShopifyProductDto,
@@ -35,6 +38,8 @@ export class ShopifyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
+    private readonly integrationsQueue: Queue,
   ) {
     // Derive encryption key from secret
     const secret = this.config.get<string>('ENCRYPTION_SECRET') || 'default-encryption-secret-change-me';
@@ -221,8 +226,13 @@ export class ShopifyService {
 
   /**
    * Register all required webhooks
+   * Returns summary of registration results
    */
-  async registerWebhooks(integrationId: string, shop: string, accessToken: string): Promise<void> {
+  async registerWebhooks(
+    integrationId: string,
+    shop: string,
+    accessToken: string,
+  ): Promise<{ registered: string[]; failed: string[] }> {
     const webhookBaseUrl = this.config.get<string>('WEBHOOK_BASE_URL');
 
     const topics = [
@@ -237,6 +247,9 @@ export class ShopifyService {
       'customers/update',
       'app/uninstalled',
     ];
+
+    const registered: string[] = [];
+    const failed: string[] = [];
 
     for (const topic of topics) {
       try {
@@ -272,11 +285,40 @@ export class ShopifyService {
           },
         });
 
+        registered.push(topic);
         this.logger.log(`Registered webhook: ${topic} for integration ${integrationId}`);
       } catch (error) {
+        failed.push(topic);
         this.logger.error(`Failed to register webhook ${topic}:`, error);
+
+        // Track failed webhook in database
+        const address = `${webhookBaseUrl}/v1/integrations/shopify/webhooks/${integrationId}`;
+        await this.prisma.integrationWebhook.upsert({
+          where: {
+            integration_id_topic: {
+              integration_id: integrationId,
+              topic,
+            },
+          },
+          create: {
+            integration_id: integrationId,
+            topic,
+            address,
+            status: 'failed',
+          },
+          update: {
+            status: 'failed',
+          },
+        }).catch(() => {}); // Don't fail if we can't track the failure
       }
     }
+
+    // Log summary
+    this.logger.log(
+      `Webhook registration complete for ${integrationId}: ${registered.length} registered, ${failed.length} failed`,
+    );
+
+    return { registered, failed };
   }
 
   /**
@@ -406,7 +448,9 @@ export class ShopifyService {
         },
       },
       update: {
-        status: action === 'paid' ? 'paid' : action === 'cancelled' ? 'cancelled' : undefined,
+        // Only update status if action explicitly sets it (paid/cancelled)
+        ...(action === 'paid' ? { status: 'paid' } : {}),
+        ...(action === 'cancelled' ? { status: 'cancelled' } : {}),
         source: 'merged', // Webhook vence
         total_amount_minor: totalAmountMinor,
         subtotal_amount_minor: subtotalAmountMinor,
@@ -426,11 +470,14 @@ export class ShopifyService {
       },
     });
 
-    // If order is paid, trigger attribution calculation
+    // If order is paid, queue attribution calculation
     if (action === 'paid') {
-      // TODO: Queue attribution calculation job
-      // This will look at recent push deliveries and attribute the order
-      this.logger.log(`Order ${order.id} paid - triggering attribution`);
+      await this.integrationsQueue.add('attribution-calculation', {
+        storeId,
+        orderId: dbOrder.id,
+        platform: 'shopify',
+      });
+      this.logger.log(`Order ${order.id} paid - queued attribution calculation`);
     }
 
     // Link order to device/customer if we can find them

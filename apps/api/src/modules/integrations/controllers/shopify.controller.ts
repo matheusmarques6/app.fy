@@ -318,8 +318,15 @@ export class ShopifyController {
       throw new BadRequestException('Shopify not connected');
     }
 
-    // TODO: Queue sync job
-    // await this.queueService.add('integrations_sync', { integrationId: integration.id });
+    // Queue catalog sync job
+    await this.integrationsQueue.add('catalog-sync', {
+      storeId,
+      integrationId: integration.id,
+      platform: 'shopify',
+      syncType: 'full',
+    });
+
+    this.logger.log(`Queued catalog sync for Shopify integration ${integration.id}`);
 
     return { queued: true };
   }

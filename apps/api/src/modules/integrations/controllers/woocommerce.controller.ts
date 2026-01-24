@@ -265,7 +265,15 @@ export class WooCommerceController {
       throw new BadRequestException('WooCommerce not connected');
     }
 
-    // TODO: Queue sync job
+    // Queue catalog sync job
+    await this.integrationsQueue.add('catalog-sync', {
+      storeId,
+      integrationId: integration.id,
+      platform: 'woocommerce',
+      syncType: 'full',
+    });
+
+    this.logger.log(`Queued catalog sync for WooCommerce integration ${integration.id}`);
 
     return { queued: true };
   }
