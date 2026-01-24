@@ -19,11 +19,31 @@ async function bootstrap() {
   app.use(helmet());
 
   // CORS
+  const allowedOrigins = configService.get<string>('CORS_ORIGINS', '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
+  // Always include CONSOLE_BASE_URL if set
+  const consoleUrl = configService.get<string>('CONSOLE_BASE_URL', '');
+  if (consoleUrl && !allowedOrigins.includes(consoleUrl)) {
+    allowedOrigins.push(consoleUrl);
+  }
+
   app.enableCors({
     origin: nodeEnv === 'production'
-      ? [configService.get<string>('CONSOLE_BASE_URL', '')]
+      ? (origin, callback) => {
+          // Allow requests with no origin (mobile apps, Postman, etc.)
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+          } else {
+            callback(new Error(`CORS not allowed for origin: ${origin}`));
+          }
+        }
       : true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Store-Id', 'X-Request-Id'],
   });
 
   // Global prefix
