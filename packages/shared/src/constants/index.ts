@@ -56,6 +56,7 @@ export const QUEUE_NAMES = {
   CAMPAIGN_SEND: 'campaign-send',
   PUSH_SEND: 'push-send',
   INTEGRATIONS_SYNC: 'integrations-sync',
+  WEBHOOK_PROCESS: 'webhook-process',
   AI_JOBS: 'ai-jobs',
   BUILD: 'build-jobs',
   PUBLISH: 'publish-jobs',
