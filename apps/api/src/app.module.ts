@@ -49,12 +49,14 @@ import { HealthModule } from './common/health/health.module';
       },
     ]),
 
-    // BullMQ
+    // BullMQ - parse REDIS_URL or fallback to host/port
     BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      },
+      connection: process.env.REDIS_URL
+        ? { url: process.env.REDIS_URL }
+        : {
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379', 10),
+          },
       defaultJobOptions: {
         attempts: 3,
         backoff: {
