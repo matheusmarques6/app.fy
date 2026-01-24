@@ -541,10 +541,7 @@ export class AuthService {
 
     // Log the reset link (for development/debugging)
     // TODO: Replace with actual email sending
-    this.logger.log(`=================================================`);
-    this.logger.log(`PASSWORD RESET LINK for ${email}:`);
-    this.logger.log(resetUrl);
-    this.logger.log(`=================================================`);
+    this.logger.log(`PASSWORD_RESET_URL email=${email} url=${resetUrl}`);
 
     return { message: 'If an account exists with this email, you will receive a password reset link.' };
   }
