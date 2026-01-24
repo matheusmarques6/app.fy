@@ -341,10 +341,18 @@ export class AuthService {
 
     // Create account and user in a transaction
     const result = await this.prisma.$transaction(async (tx: typeof this.prisma) => {
+      // Generate unique slug from name
+      const baseSlug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      const slug = `${baseSlug}-${Date.now().toString(36)}`;
+
       // Create account
       const account = await tx.account.create({
         data: {
           name: `${name}'s Account`,
+          slug,
           plan: 'free',
         },
       });
