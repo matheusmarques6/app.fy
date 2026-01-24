@@ -295,7 +295,10 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
       include: {
-        account: true,
+        account_memberships: {
+          include: { account: true },
+          take: 1,
+        },
       },
     });
 
@@ -308,8 +311,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    // Get primary account membership
+    const membership = user.account_memberships[0];
+    if (!membership) {
+      throw new UnauthorizedException('User has no account');
+    }
+
     // Create human access token
-    const accessToken = await this.createHumanToken(user);
+    const accessToken = await this.createHumanToken({
+      ...user,
+      account_id: membership.account_id,
+      role: membership.role,
+    });
 
     return {
       access_token: accessToken,
@@ -317,8 +330,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
-        account_id: user.account_id,
-        role: user.role,
+        account_id: membership.account_id,
+        role: membership.role,
       },
     };
   }
@@ -363,10 +376,17 @@ export class AuthService {
       // Create user
       const user = await tx.user.create({
         data: {
-          account_id: account.id,
           email: email.toLowerCase(),
           name,
           password_hash: passwordHash,
+        },
+      });
+
+      // Create account membership (links user to account with role)
+      await tx.accountMembership.create({
+        data: {
+          account_id: account.id,
+          user_id: user.id,
           role: 'owner',
         },
       });
@@ -375,7 +395,11 @@ export class AuthService {
     });
 
     // Create human access token
-    const accessToken = await this.createHumanToken(result.user);
+    const accessToken = await this.createHumanToken({
+      ...result.user,
+      account_id: result.account.id,
+      role: 'owner',
+    });
 
     return {
       access_token: accessToken,
@@ -383,8 +407,8 @@ export class AuthService {
         id: result.user.id,
         email: result.user.email,
         name: result.user.name,
-        account_id: result.user.account_id,
-        role: result.user.role,
+        account_id: result.account.id,
+        role: 'owner',
       },
     };
   }
@@ -418,7 +442,10 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
-        account: true,
+        account_memberships: {
+          include: { account: true },
+          take: 1,
+        },
         store_memberships: {
           include: {
             store: {
@@ -437,16 +464,18 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    const membership = user.account_memberships[0];
+
     return {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
-      account: {
-        id: user.account.id,
-        name: user.account.name,
-        plan: user.account.plan,
-      },
+      role: membership?.role || 'viewer',
+      account: membership ? {
+        id: membership.account.id,
+        name: membership.account.name,
+        plan: membership.account.plan,
+      } : null,
       stores: user.store_memberships.map((m: any) => ({
         id: m.store.id,
         name: m.store.name,
