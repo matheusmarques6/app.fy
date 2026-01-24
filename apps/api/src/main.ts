@@ -7,6 +7,15 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
+  // Validate required environment variables
+  const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET'];
+  const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
+
+  if (missingEnvVars.length > 0) {
+    logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
