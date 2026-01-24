@@ -1,22 +1,26 @@
 // @ts-nocheck
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import type { AutomationFlow, AutomationNode, AutomationEdge } from '@appfy/shared';
+import type { AutomationNode, AutomationEdge } from '@appfy/shared';
 
 interface CreateAutomationDto {
   name: string;
   description?: string;
-  trigger_event: string;
-  flow: AutomationFlow;
-  is_active?: boolean;
+  entry_event: string;
+  entry_segment_id?: string;
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
+  status?: 'draft' | 'active' | 'paused' | 'archived';
 }
 
 interface UpdateAutomationDto {
   name?: string;
   description?: string;
-  trigger_event?: string;
-  flow?: AutomationFlow;
-  is_active?: boolean;
+  entry_event?: string;
+  entry_segment_id?: string;
+  nodes?: AutomationNode[];
+  edges?: AutomationEdge[];
+  status?: 'draft' | 'active' | 'paused' | 'archived';
 }
 
 @Injectable()
@@ -31,9 +35,12 @@ export class AutomationsService {
         id: true,
         name: true,
         description: true,
-        trigger_event: true,
-        is_active: true,
-        flow: true,
+        entry_event: true,
+        entry_segment_id: true,
+        status: true,
+        nodes: true,
+        edges: true,
+        stats: true,
         created_at: true,
         updated_at: true,
         _count: {
@@ -49,6 +56,7 @@ export class AutomationsService {
     const automation = await this.prisma.automation.findUnique({
       where: { id: automationId },
       include: {
+        entry_segment: true,
         _count: {
           select: {
             runs: true,
@@ -70,16 +78,19 @@ export class AutomationsService {
 
   async create(storeId: string, dto: CreateAutomationDto) {
     // Validate flow structure
-    this.validateFlow(dto.flow);
+    this.validateFlow(dto.nodes, dto.edges);
 
     return this.prisma.automation.create({
       data: {
         store_id: storeId,
         name: dto.name,
         description: dto.description,
-        trigger_event: dto.trigger_event,
-        flow: dto.flow as any,
-        is_active: dto.is_active ?? false,
+        entry_event: dto.entry_event,
+        entry_segment_id: dto.entry_segment_id,
+        nodes: dto.nodes as any,
+        edges: dto.edges as any,
+        status: dto.status ?? 'draft',
+        stats: {},
       },
     });
   }
@@ -87,8 +98,8 @@ export class AutomationsService {
   async update(storeId: string, automationId: string, dto: UpdateAutomationDto) {
     await this.findOne(storeId, automationId);
 
-    if (dto.flow) {
-      this.validateFlow(dto.flow);
+    if (dto.nodes && dto.edges) {
+      this.validateFlow(dto.nodes, dto.edges);
     }
 
     return this.prisma.automation.update({
@@ -96,9 +107,11 @@ export class AutomationsService {
       data: {
         name: dto.name,
         description: dto.description,
-        trigger_event: dto.trigger_event,
-        flow: dto.flow as any,
-        is_active: dto.is_active,
+        entry_event: dto.entry_event,
+        entry_segment_id: dto.entry_segment_id,
+        nodes: dto.nodes as any,
+        edges: dto.edges as any,
+        status: dto.status,
         updated_at: new Date(),
       },
     });
@@ -123,7 +136,7 @@ export class AutomationsService {
     return this.prisma.automation.update({
       where: { id: automationId },
       data: {
-        is_active: isActive,
+        status: isActive ? 'active' : 'paused',
         updated_at: new Date(),
       },
     });
@@ -181,7 +194,7 @@ export class AutomationsService {
       this.prisma.automationRun.count({
         where: {
           automation_id: automationId,
-          status: 'failed',
+          status: 'exited',
         },
       }),
     ]);
@@ -194,32 +207,32 @@ export class AutomationsService {
     };
   }
 
-  private validateFlow(flow: AutomationFlow) {
-    if (!flow.nodes || !Array.isArray(flow.nodes)) {
+  private validateFlow(nodes: AutomationNode[], edges: AutomationEdge[]) {
+    if (!nodes || !Array.isArray(nodes)) {
       throw new BadRequestException('Invalid flow: nodes must be an array');
     }
 
-    if (!flow.edges || !Array.isArray(flow.edges)) {
+    if (!edges || !Array.isArray(edges)) {
       throw new BadRequestException('Invalid flow: edges must be an array');
     }
 
     // Check for trigger node
-    const triggerNode = flow.nodes.find((n) => n.type === 'trigger');
+    const triggerNode = nodes.find((n) => n.type === 'trigger');
     if (!triggerNode) {
       throw new BadRequestException('Invalid flow: must have a trigger node');
     }
 
     // Validate node types
     const validNodeTypes = ['trigger', 'condition', 'delay', 'action', 'segment_check'];
-    for (const node of flow.nodes) {
+    for (const node of nodes) {
       if (!validNodeTypes.includes(node.type)) {
         throw new BadRequestException(`Invalid node type: ${node.type}`);
       }
     }
 
     // Validate edges reference existing nodes
-    const nodeIds = new Set(flow.nodes.map((n) => n.id));
-    for (const edge of flow.edges) {
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    for (const edge of edges) {
       if (!nodeIds.has(edge.source_node_id)) {
         throw new BadRequestException(`Invalid edge: source node ${edge.source_node_id} not found`);
       }

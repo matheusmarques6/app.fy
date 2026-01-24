@@ -7,25 +7,33 @@ import { QUEUE_NAMES } from '@appfy/shared';
 
 interface CreateCampaignDto {
   name: string;
+  description?: string;
+  type?: 'one_time' | 'recurring' | 'triggered';
   segment_id?: string;
-  title: string;
-  body: string;
-  data?: Record<string, any>;
+  timezone?: string;
+  // Template content
+  template_name?: string;
+  title: Record<string, string>; // { "pt-BR": "...", "en-US": "..." }
+  body: Record<string, string>;
   image_url?: string;
-  action_url?: string;
+  deeplink?: string;
+  data?: Record<string, any>;
 }
 
 interface UpdateCampaignDto {
   name?: string;
+  description?: string;
   segment_id?: string;
-  title?: string;
-  body?: string;
-  data?: Record<string, any>;
+  timezone?: string;
+  // Template content
+  title?: Record<string, string>;
+  body?: Record<string, string>;
   image_url?: string;
-  action_url?: string;
+  deeplink?: string;
+  data?: Record<string, any>;
 }
 
-type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
+type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'paused' | 'cancelled';
 
 @Injectable()
 export class CampaignsService {
@@ -44,17 +52,30 @@ export class CampaignsService {
       select: {
         id: true,
         name: true,
+        description: true,
+        type: true,
         status: true,
-        title: true,
-        body: true,
         scheduled_for: true,
+        timezone: true,
+        stats: true,
         sent_at: true,
         created_at: true,
+        updated_at: true,
         segment: {
           select: {
             id: true,
             name: true,
             member_count: true,
+          },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            title: true,
+            body: true,
+            image_url: true,
+            deeplink: true,
           },
         },
         _count: {
@@ -77,6 +98,7 @@ export class CampaignsService {
             member_count: true,
           },
         },
+        template: true,
       },
     });
 
@@ -102,18 +124,41 @@ export class CampaignsService {
       }
     }
 
-    return this.prisma.campaign.create({
-      data: {
-        store_id: storeId,
-        name: dto.name,
-        segment_id: dto.segment_id,
-        title: dto.title,
-        body: dto.body,
-        data: dto.data || {},
-        image_url: dto.image_url,
-        action_url: dto.action_url,
-        status: 'draft',
-      },
+    // Create template and campaign in a transaction
+    return this.prisma.$transaction(async (tx) => {
+      // Create the push template first
+      const template = await tx.pushTemplate.create({
+        data: {
+          store_id: storeId,
+          name: dto.template_name || `Template for ${dto.name}`,
+          title: dto.title,
+          body: dto.body,
+          image_url: dto.image_url,
+          deeplink: dto.deeplink,
+          data: dto.data || {},
+        },
+      });
+
+      // Create the campaign
+      const campaign = await tx.campaign.create({
+        data: {
+          store_id: storeId,
+          name: dto.name,
+          description: dto.description,
+          type: dto.type || 'one_time',
+          segment_id: dto.segment_id,
+          template_id: template.id,
+          timezone: dto.timezone || 'America/Sao_Paulo',
+          status: 'draft',
+          stats: {},
+        },
+        include: {
+          template: true,
+          segment: true,
+        },
+      });
+
+      return campaign;
     });
   }
 
@@ -134,18 +179,38 @@ export class CampaignsService {
       }
     }
 
-    return this.prisma.campaign.update({
-      where: { id: campaignId },
-      data: {
-        name: dto.name,
-        segment_id: dto.segment_id,
-        title: dto.title,
-        body: dto.body,
-        data: dto.data,
-        image_url: dto.image_url,
-        action_url: dto.action_url,
-        updated_at: new Date(),
-      },
+    // Update template and campaign
+    return this.prisma.$transaction(async (tx) => {
+      // Update the template if any template fields are provided
+      if (dto.title || dto.body || dto.image_url !== undefined || dto.deeplink !== undefined || dto.data) {
+        await tx.pushTemplate.update({
+          where: { id: campaign.template_id },
+          data: {
+            ...(dto.title && { title: dto.title }),
+            ...(dto.body && { body: dto.body }),
+            ...(dto.image_url !== undefined && { image_url: dto.image_url }),
+            ...(dto.deeplink !== undefined && { deeplink: dto.deeplink }),
+            ...(dto.data && { data: dto.data }),
+            updated_at: new Date(),
+          },
+        });
+      }
+
+      // Update the campaign
+      return tx.campaign.update({
+        where: { id: campaignId },
+        data: {
+          ...(dto.name && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.segment_id !== undefined && { segment_id: dto.segment_id }),
+          ...(dto.timezone && { timezone: dto.timezone }),
+          updated_at: new Date(),
+        },
+        include: {
+          template: true,
+          segment: true,
+        },
+      });
     });
   }
 
@@ -156,6 +221,7 @@ export class CampaignsService {
       throw new BadRequestException('Can only delete draft or cancelled campaigns');
     }
 
+    // Delete campaign (template can be kept for historical purposes)
     return this.prisma.campaign.delete({
       where: { id: campaignId },
     });
@@ -268,18 +334,39 @@ export class CampaignsService {
   async duplicate(storeId: string, campaignId: string) {
     const campaign = await this.findOne(storeId, campaignId);
 
-    return this.prisma.campaign.create({
-      data: {
-        store_id: storeId,
-        name: `${campaign.name} (Copy)`,
-        segment_id: campaign.segment_id,
-        title: campaign.title,
-        body: campaign.body,
-        data: campaign.data || {},
-        image_url: campaign.image_url,
-        action_url: campaign.action_url,
-        status: 'draft',
-      },
+    // Duplicate both template and campaign
+    return this.prisma.$transaction(async (tx) => {
+      // Duplicate the template
+      const newTemplate = await tx.pushTemplate.create({
+        data: {
+          store_id: storeId,
+          name: `${campaign.template.name} (Copy)`,
+          title: campaign.template.title as any,
+          body: campaign.template.body as any,
+          image_url: campaign.template.image_url,
+          deeplink: campaign.template.deeplink,
+          data: campaign.template.data as any || {},
+        },
+      });
+
+      // Duplicate the campaign
+      return tx.campaign.create({
+        data: {
+          store_id: storeId,
+          name: `${campaign.name} (Copy)`,
+          description: campaign.description,
+          type: campaign.type,
+          segment_id: campaign.segment_id,
+          template_id: newTemplate.id,
+          timezone: campaign.timezone,
+          status: 'draft',
+          stats: {},
+        },
+        include: {
+          template: true,
+          segment: true,
+        },
+      });
     });
   }
 }

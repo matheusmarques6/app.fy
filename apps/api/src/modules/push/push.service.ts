@@ -5,12 +5,19 @@ import { OneSignalProvider } from './providers/onesignal.provider';
 import type { PushMessage, PushResult } from './providers/push-provider.interface';
 import { PUSH_MAX_PER_DEVICE_PER_DAY } from '@appfy/shared';
 
+interface OneSignalConfig {
+  app_id: string;
+  rest_api_key: string;
+}
+
 interface SendPushOptions {
   storeId: string;
   deviceId?: string;
   segmentId?: string;
   campaignId?: string;
+  automationId?: string;
   automationRunId?: string;
+  templateId: string;
   message: PushMessage;
 }
 
@@ -27,13 +34,13 @@ export class PushService {
    * Send push to a specific device
    */
   async sendToDevice(options: SendPushOptions): Promise<PushResult> {
-    const { storeId, deviceId, message, campaignId, automationRunId } = options;
+    const { storeId, deviceId, message, campaignId, automationId, automationRunId, templateId } = options;
 
     if (!deviceId) {
       return { success: false, errors: ['Device ID is required'] };
     }
 
-    // Get store's OneSignal config
+    // Get store's OneSignal config from settings
     const config = await this.getStoreConfig(storeId);
     if (!config) {
       return { success: false, errors: ['Push not configured for this store'] };
@@ -71,10 +78,11 @@ export class PushService {
       storeId,
       deviceId,
       campaignId,
+      automationId,
       automationRunId,
-      message,
+      templateId,
       result,
-      providerNotificationId: result.notificationId,
+      providerMessageId: result.notificationId,
     });
 
     return result;
@@ -84,7 +92,7 @@ export class PushService {
    * Send push to a segment
    */
   async sendToSegment(options: SendPushOptions): Promise<PushResult> {
-    const { storeId, segmentId, message, campaignId } = options;
+    const { storeId, segmentId, message, campaignId, automationId, templateId } = options;
 
     if (!segmentId) {
       return { success: false, errors: ['Segment ID is required'] };
@@ -156,8 +164,9 @@ export class PushService {
           storeId,
           deviceIds,
           campaignId,
-          message,
-          providerNotificationId: result.notificationId,
+          automationId,
+          templateId,
+          providerMessageId: result.notificationId,
         });
       } else {
         errors.push(...(result.errors || []));
@@ -172,25 +181,29 @@ export class PushService {
   }
 
   /**
-   * Get OneSignal config for a store
+   * Get OneSignal config for a store from Store.settings
+   * Expected structure: { push_provider: { type: 'onesignal', app_id: '...', rest_api_key: '...' } }
    */
-  private async getStoreConfig(storeId: string) {
-    const integration = await this.prisma.integration.findFirst({
-      where: {
-        store_id: storeId,
-        provider: 'onesignal',
-        is_active: true,
-      },
+  private async getStoreConfig(storeId: string): Promise<{ appId: string; apiKey: string } | null> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { settings: true },
     });
 
-    if (!integration?.credentials) {
+    if (!store?.settings) {
       return null;
     }
 
-    const creds = integration.credentials as Record<string, string>;
+    const settings = store.settings as Record<string, any>;
+    const pushConfig = settings.push_provider as OneSignalConfig | undefined;
+
+    if (!pushConfig?.app_id || !pushConfig?.rest_api_key) {
+      return null;
+    }
+
     return {
-      appId: creds.app_id,
-      apiKey: creds.rest_api_key,
+      appId: pushConfig.app_id,
+      apiKey: pushConfig.rest_api_key,
     };
   }
 
@@ -219,23 +232,28 @@ export class PushService {
     storeId: string;
     deviceId: string;
     campaignId?: string;
+    automationId?: string;
     automationRunId?: string;
-    message: PushMessage;
+    templateId: string;
     result: PushResult;
-    providerNotificationId?: string;
+    providerMessageId?: string;
   }) {
+    const now = new Date();
+
     return this.prisma.delivery.create({
       data: {
         store_id: params.storeId,
         device_id: params.deviceId,
         campaign_id: params.campaignId,
+        automation_id: params.automationId,
         automation_run_id: params.automationRunId,
+        template_id: params.templateId,
         status: params.result.success ? 'sent' : 'failed',
-        provider: 'onesignal',
-        provider_notification_id: params.providerNotificationId,
-        payload: params.message as any,
-        sent_at: params.result.success ? new Date() : null,
-        error: params.result.errors?.join('; '),
+        scheduled_for: now,
+        sent_at: params.result.success ? now : null,
+        failed_at: params.result.success ? null : now,
+        failure_reason: params.result.errors?.join('; '),
+        provider_message_id: params.providerMessageId,
       },
     });
   }
@@ -247,8 +265,9 @@ export class PushService {
     storeId: string;
     deviceIds: string[];
     campaignId?: string;
-    message: PushMessage;
-    providerNotificationId?: string;
+    automationId?: string;
+    templateId: string;
+    providerMessageId?: string;
   }) {
     const now = new Date();
 
@@ -257,11 +276,12 @@ export class PushService {
         store_id: params.storeId,
         device_id: deviceId,
         campaign_id: params.campaignId,
+        automation_id: params.automationId,
+        template_id: params.templateId,
         status: 'sent' as const,
-        provider: 'onesignal',
-        provider_notification_id: params.providerNotificationId,
-        payload: params.message as any,
+        scheduled_for: now,
         sent_at: now,
+        provider_message_id: params.providerMessageId,
       })),
     });
   }
@@ -284,11 +304,11 @@ export class PushService {
       return;
     }
 
-    // Find the delivery record
+    // Find the delivery record by provider_message_id
     const delivery = await this.prisma.delivery.findFirst({
       where: {
         device_id: subscription.device_id,
-        provider_notification_id: notificationId,
+        provider_message_id: notificationId,
       },
     });
 

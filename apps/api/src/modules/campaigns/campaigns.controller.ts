@@ -16,22 +16,30 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface CreateCampaignDto {
   name: string;
+  description?: string;
+  type?: 'one_time' | 'recurring' | 'triggered';
   segment_id?: string;
-  title: string;
-  body: string;
-  data?: Record<string, any>;
+  timezone?: string;
+  // Template content
+  template_name?: string;
+  title: Record<string, string>; // { "pt-BR": "...", "en-US": "..." }
+  body: Record<string, string>;
   image_url?: string;
-  action_url?: string;
+  deeplink?: string;
+  data?: Record<string, any>;
 }
 
 interface UpdateCampaignDto {
   name?: string;
+  description?: string;
   segment_id?: string;
-  title?: string;
-  body?: string;
-  data?: Record<string, any>;
+  timezone?: string;
+  // Template content
+  title?: Record<string, string>;
+  body?: Record<string, string>;
   image_url?: string;
-  action_url?: string;
+  deeplink?: string;
+  data?: Record<string, any>;
 }
 
 @Controller('campaigns')

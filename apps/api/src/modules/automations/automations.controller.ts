@@ -14,22 +14,26 @@ import {
 } from '@nestjs/common';
 import { AutomationsService } from './automations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import type { AutomationFlow } from '@appfy/shared';
+import type { AutomationNode, AutomationEdge } from '@appfy/shared';
 
 interface CreateAutomationDto {
   name: string;
   description?: string;
-  trigger_event: string;
-  flow: AutomationFlow;
-  is_active?: boolean;
+  entry_event: string;
+  entry_segment_id?: string;
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
+  status?: 'draft' | 'active' | 'paused' | 'archived';
 }
 
 interface UpdateAutomationDto {
   name?: string;
   description?: string;
-  trigger_event?: string;
-  flow?: AutomationFlow;
-  is_active?: boolean;
+  entry_event?: string;
+  entry_segment_id?: string;
+  nodes?: AutomationNode[];
+  edges?: AutomationEdge[];
+  status?: 'draft' | 'active' | 'paused' | 'archived';
 }
 
 @Controller('automations')
@@ -94,12 +98,12 @@ export class AutomationsController {
   async toggle(
     @Headers('x-store-id') storeId: string,
     @Param('id') id: string,
-    @Body() body: { is_active: boolean },
+    @Body() body: { active: boolean },
   ) {
     if (!storeId) {
       throw new BadRequestException('X-Store-Id header is required');
     }
-    return this.automationsService.toggleActive(storeId, id, body.is_active);
+    return this.automationsService.toggleActive(storeId, id, body.active);
   }
 
   @Get(':id/runs')

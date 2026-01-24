@@ -128,7 +128,8 @@ export class SegmentsService {
             select: {
               id: true,
               platform: true,
-              app_version: true,
+              locale: true,
+              timezone: true,
               last_seen_at: true,
             },
           },
@@ -159,18 +160,18 @@ export class SegmentsService {
   async previewCount(storeId: string, definition: SegmentDefinition) {
     this.validateDefinition(definition);
 
-    // Get all devices with metrics for this store
+    // Get all devices with user_metrics for this store
     const devices = await this.prisma.device.findMany({
       where: { store_id: storeId },
       include: {
-        metrics: true,
+        user_metrics: true,
       },
     });
 
     // Evaluate each device against the definition
     let count = 0;
     for (const device of devices) {
-      if (device.metrics && this.evaluateSegment(definition, device.metrics, device)) {
+      if (device.user_metrics && this.evaluateSegment(definition, device.user_metrics, device)) {
         count++;
       }
     }

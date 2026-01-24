@@ -10,13 +10,15 @@ interface PushSendJob {
   deviceId?: string;
   segmentId?: string;
   campaignId?: string;
+  automationId?: string;
   automationRunId?: string;
+  templateId: string;
   message: {
     title: string;
     body: string;
     data?: Record<string, any>;
     imageUrl?: string;
-    actionUrl?: string;
+    deeplink?: string;
   };
 }
 
@@ -32,7 +34,7 @@ export class PushProcessor extends WorkerHost {
   }
 
   async process(job: Job<PushSendJob>): Promise<void> {
-    const { storeId, deviceId, segmentId, campaignId, automationRunId, message } = job.data;
+    const { storeId, deviceId, segmentId, campaignId, automationId, automationRunId, templateId, message } = job.data;
 
     this.logger.debug(`Processing push job for store ${storeId}`);
 
@@ -45,7 +47,9 @@ export class PushProcessor extends WorkerHost {
           storeId,
           deviceId,
           campaignId,
+          automationId,
           automationRunId,
+          templateId,
           message,
         });
 
@@ -60,6 +64,8 @@ export class PushProcessor extends WorkerHost {
           storeId,
           segmentId,
           campaignId,
+          automationId,
+          templateId,
           message,
         });
 
