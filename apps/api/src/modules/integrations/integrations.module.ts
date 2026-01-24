@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from '../../common/prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 import { ShopifyService } from './services/shopify.service';
 import { ShopifyController } from './controllers/shopify.controller';
 import { WooCommerceService } from './services/woocommerce.service';
@@ -12,6 +13,7 @@ import { QUEUE_NAMES } from '@appfy/shared';
   imports: [
     PrismaModule,
     ConfigModule,
+    AuthModule,
     BullModule.registerQueue({
       name: QUEUE_NAMES.INTEGRATIONS_SYNC,
     }),
