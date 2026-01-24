@@ -12,6 +12,8 @@ import {
   Smartphone,
   ChevronLeft,
   ChevronRight,
+  MonitorSmartphone,
+  Webhook,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAppStore } from '../lib/store';
@@ -19,10 +21,12 @@ import { StoreSwitcher } from './store-switcher';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Devices', href: '/devices', icon: MonitorSmartphone },
   { name: 'Campaigns', href: '/campaigns', icon: Bell },
   { name: 'Automations', href: '/automations', icon: Workflow },
   { name: 'Segments', href: '/segments', icon: Users },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Webhooks', href: '/webhooks', icon: Webhook },
   { name: 'App Builder', href: '/app-builder', icon: Smartphone },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
