@@ -6,6 +6,7 @@ import { BullModule } from '@nestjs/bullmq';
 // Common
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
+import { EmailModule } from './common/email/email.module';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -81,6 +82,7 @@ import { HealthModule } from './common/health/health.module';
     // Common
     PrismaModule,
     RedisModule,
+    EmailModule,
     HealthModule,
 
     // Feature modules
