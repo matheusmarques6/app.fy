@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
+import { AuthModule } from '../auth/auth.module';
 import { QUEUE_NAMES } from '@appfy/shared';
 
 @Module({
   imports: [
+    AuthModule,
     BullModule.registerQueue({
       name: QUEUE_NAMES.WEBHOOK_PROCESS,
     }),
