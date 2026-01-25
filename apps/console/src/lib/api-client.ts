@@ -740,4 +740,353 @@ export const analyticsApi = {
   },
 };
 
+// ============================================================================
+// Apps API (App Builder)
+// ============================================================================
+
+export interface App {
+  id: string;
+  store_id: string;
+  name: string;
+  bundle_id_ios?: string;
+  bundle_id_android?: string;
+  status: 'draft' | 'building' | 'published' | 'suspended';
+  config: Record<string, unknown>;
+  onesignal_app_id?: string;
+  onesignal_api_key?: string;
+  rc_public_key?: string;
+  icon_url?: string;
+  splash_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AppVersion {
+  id: string;
+  app_id: string;
+  version_code: number;
+  version_name: string;
+  platform: 'ios' | 'android';
+  status: 'pending' | 'building' | 'built' | 'published' | 'failed';
+  build_log_url?: string;
+  artifact_url?: string;
+  created_at: string;
+}
+
+export interface AppCredential {
+  id: string;
+  app_id: string;
+  platform: 'ios' | 'android';
+  credential_type: string;
+  metadata: {
+    teamId?: string;
+    bundleId?: string;
+    commonName?: string;
+    expiresAt?: string;
+    keyAlias?: string;
+    validUntil?: string;
+    fingerprintSha256?: string;
+  };
+  created_at: string;
+}
+
+export interface BuildJob {
+  id: string;
+  app_version_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  external_build_id?: string;
+  started_at?: string;
+  completed_at?: string;
+  log_url?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface BuildReadiness {
+  ready: boolean;
+  checks: {
+    hasIcon: boolean;
+    hasSplash: boolean;
+    hasIosCredentials: boolean;
+    hasAndroidCredentials: boolean;
+    hasOneSignal: boolean;
+    hasKeypair: boolean;
+  };
+  missing: string[];
+}
+
+export const appsApi = {
+  list: (token: string, storeId: string) =>
+    request<App[]>('/apps', {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  get: (token: string, storeId: string, appId: string) =>
+    request<App>(`/apps/${appId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  update: (token: string, storeId: string, appId: string, data: Partial<App>) =>
+    request<App>(`/apps/${appId}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify(data),
+    }),
+
+  getVersions: (token: string, storeId: string, appId: string) =>
+    request<AppVersion[]>(`/apps/${appId}/versions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  generateKeypair: (token: string, storeId: string, appId: string) =>
+    request<{ publicKey: string }>(`/apps/${appId}/generate-keypair`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  setOneSignal: (token: string, storeId: string, appId: string, data: { app_id: string; api_key: string }) =>
+    request<App>(`/apps/${appId}/onesignal`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify(data),
+    }),
+
+  removeOneSignal: (token: string, storeId: string, appId: string) =>
+    request<App>(`/apps/${appId}/onesignal`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  getBuildReadiness: (token: string, storeId: string, appId: string) =>
+    request<BuildReadiness>(`/apps/${appId}/build-readiness`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+};
+
+// ============================================================================
+// Assets API (App Builder)
+// ============================================================================
+
+export interface AppAssets {
+  icon_url?: string;
+  splash_url?: string;
+}
+
+export const assetsApi = {
+  list: (token: string, storeId: string, appId: string) =>
+    request<AppAssets>(`/apps/${appId}/assets`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  uploadIcon: async (token: string, storeId: string, appId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('icon', file);
+
+    const response = await fetch(`${API_BASE_URL}/apps/${appId}/assets/icon`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Store-Id': storeId,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new ApiError(response.status, error.code || 'UPLOAD_ERROR', error.message || 'Failed to upload icon');
+    }
+
+    return response.json() as Promise<{ icon_url: string; processed_sizes: number }>;
+  },
+
+  uploadSplash: async (token: string, storeId: string, appId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('splash', file);
+
+    const response = await fetch(`${API_BASE_URL}/apps/${appId}/assets/splash`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Store-Id': storeId,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new ApiError(response.status, error.code || 'UPLOAD_ERROR', error.message || 'Failed to upload splash');
+    }
+
+    return response.json() as Promise<{ splash_url: string }>;
+  },
+
+  deleteIcon: (token: string, storeId: string, appId: string) =>
+    request<void>(`/apps/${appId}/assets/icon`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  deleteSplash: (token: string, storeId: string, appId: string) =>
+    request<void>(`/apps/${appId}/assets/splash`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  getIconUrl: (token: string, storeId: string, appId: string) =>
+    request<{ url: string; expires_at: string }>(`/apps/${appId}/assets/icon/url`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  getSplashUrl: (token: string, storeId: string, appId: string) =>
+    request<{ url: string; expires_at: string }>(`/apps/${appId}/assets/splash/url`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+};
+
+// ============================================================================
+// Credentials API (App Builder)
+// ============================================================================
+
+export const credentialsApi = {
+  list: (token: string, storeId: string, appId: string) =>
+    request<AppCredential[]>(`/apps/${appId}/credentials`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  get: (token: string, storeId: string, appId: string, credentialId: string) =>
+    request<AppCredential>(`/apps/${appId}/credentials/${credentialId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  uploadIos: async (
+    token: string,
+    storeId: string,
+    appId: string,
+    data: {
+      certificate_p12: string; // base64
+      password: string;
+      provisioning_profile: string; // base64
+    },
+  ) =>
+    request<AppCredential>(`/apps/${appId}/credentials/ios`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify(data),
+    }),
+
+  uploadAndroid: async (
+    token: string,
+    storeId: string,
+    appId: string,
+    data: {
+      keystore: string; // base64
+      keystore_password: string;
+      key_alias: string;
+      key_password: string;
+    },
+  ) =>
+    request<AppCredential>(`/apps/${appId}/credentials/android`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify(data),
+    }),
+
+  delete: (token: string, storeId: string, appId: string, credentialId: string) =>
+    request<void>(`/apps/${appId}/credentials/${credentialId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+};
+
+// ============================================================================
+// Builds API (App Builder)
+// ============================================================================
+
+export interface Build {
+  id: string;
+  version: {
+    id: string;
+    version_code: number;
+    version_name: string;
+    platform: 'ios' | 'android';
+    status: string;
+    artifact_url?: string;
+  };
+  job: BuildJob;
+}
+
+export const buildsApi = {
+  create: (
+    token: string,
+    storeId: string,
+    appId: string,
+    data: {
+      platform: 'ios' | 'android';
+      version_name: string;
+      build_type?: 'debug' | 'release';
+    },
+  ) =>
+    request<Build>(`/apps/${appId}/builds`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify(data),
+    }),
+
+  list: (token: string, storeId: string, appId: string, params?: { platform?: 'ios' | 'android'; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.platform) searchParams.set('platform', params.platform);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+
+    return request<Build[]>(`/apps/${appId}/builds${query ? `?${query}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    });
+  },
+
+  get: (token: string, storeId: string, appId: string, buildId: string) =>
+    request<Build>(`/apps/${appId}/builds/${buildId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  getLogs: (token: string, storeId: string, appId: string, buildId: string) =>
+    request<{ logs: string }>(`/apps/${appId}/builds/${buildId}/logs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  getDownloadUrl: (token: string, storeId: string, appId: string, buildId: string) =>
+    request<{ url: string; expires_at: string }>(`/apps/${appId}/builds/${buildId}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  cancel: (token: string, storeId: string, appId: string, buildId: string) =>
+    request<void>(`/apps/${appId}/builds/${buildId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+};
+
 export { ApiError };

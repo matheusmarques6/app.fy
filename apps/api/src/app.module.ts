@@ -6,6 +6,8 @@ import { BullModule } from '@nestjs/bullmq';
 // Common
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
+import { StorageModule } from './common/storage/storage.module';
+import { EncryptionModule } from './common/encryption/encryption.module';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -21,6 +23,12 @@ import { RemoteConfigModule } from './modules/remote-config/remote-config.module
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './common/health/health.module';
+
+// App Builder modules
+import { AppsModule } from './modules/apps/apps.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { CredentialsModule } from './modules/credentials/credentials.module';
+import { BuildsModule } from './modules/builds/builds.module';
 
 @Module({
   imports: [
@@ -81,6 +89,8 @@ import { HealthModule } from './common/health/health.module';
     // Common
     PrismaModule,
     RedisModule,
+    StorageModule,
+    EncryptionModule,
     HealthModule,
 
     // Feature modules
@@ -96,6 +106,12 @@ import { HealthModule } from './common/health/health.module';
     RemoteConfigModule,
     WebhooksModule,
     AnalyticsModule,
+
+    // App Builder modules
+    AppsModule,
+    AssetsModule,
+    CredentialsModule,
+    BuildsModule,
   ],
 })
 export class AppModule {}

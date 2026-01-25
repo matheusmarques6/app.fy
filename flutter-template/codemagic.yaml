@@ -1,0 +1,240 @@
+workflows:
+  # ============================================================================
+  # Android Release Build
+  # ============================================================================
+  android-release:
+    name: Android Release
+    instance_type: linux_x2
+    max_build_duration: 30
+
+    environment:
+      flutter: stable
+      java: 17
+      groups:
+        - appfy_credentials
+      vars:
+        # These are injected by AppFy API at build time
+        APPFY_APP_ID: $APPFY_APP_ID
+        APPFY_STORE_ID: $APPFY_STORE_ID
+        APP_NAME: $APP_NAME
+        BUNDLE_ID: $BUNDLE_ID
+        VERSION_NAME: $VERSION_NAME
+        VERSION_CODE: $VERSION_CODE
+        API_BASE_URL: $API_BASE_URL
+        PRIMARY_DOMAIN: $PRIMARY_DOMAIN
+        ONESIGNAL_APP_ID: $ONESIGNAL_APP_ID
+        RC_PUBLIC_KEY: $RC_PUBLIC_KEY
+
+        # Android signing
+        CM_KEYSTORE: $CM_KEYSTORE
+        CM_KEYSTORE_PASSWORD: $CM_KEYSTORE_PASSWORD
+        CM_KEY_ALIAS: $CM_KEY_ALIAS
+        CM_KEY_PASSWORD: $CM_KEY_PASSWORD
+
+    scripts:
+      - name: Set up keystore
+        script: |
+          echo $CM_KEYSTORE | base64 --decode > $CM_BUILD_DIR/keystore.jks
+
+          cat > $CM_BUILD_DIR/android/key.properties << EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_BUILD_DIR/keystore.jks
+          EOF
+
+      - name: Update Android package name
+        script: |
+          # Update applicationId in build.gradle
+          sed -i "s/applicationId \".*\"/applicationId \"$BUNDLE_ID\"/" android/app/build.gradle
+
+          # Update app name in strings.xml
+          sed -i "s/<string name=\"app_name\">.*<\/string>/<string name=\"app_name\">$APP_NAME<\/string>/" android/app/src/main/res/values/strings.xml
+
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --dart-define=APPFY_APP_ID=$APPFY_APP_ID \
+            --dart-define=APPFY_STORE_ID=$APPFY_STORE_ID \
+            --dart-define=APP_NAME="$APP_NAME" \
+            --dart-define=BUNDLE_ID=$BUNDLE_ID \
+            --dart-define=VERSION_NAME=$VERSION_NAME \
+            --dart-define=VERSION_CODE=$VERSION_CODE \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
+            --dart-define=PRIMARY_DOMAIN=$PRIMARY_DOMAIN \
+            --dart-define=ONESIGNAL_APP_ID=$ONESIGNAL_APP_ID \
+            --dart-define=RC_PUBLIC_KEY=$RC_PUBLIC_KEY
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+
+    publishing:
+      scripts:
+        - name: Notify AppFy
+          script: |
+            if [ -n "$APPFY_WEBHOOK_URL" ]; then
+              curl -X POST "$APPFY_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"buildId\": \"$CM_BUILD_ID\",
+                  \"buildStatus\": \"finished\",
+                  \"startedAt\": \"$CM_BUILD_START_TIME\",
+                  \"finishedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+                  \"artefacts\": [{
+                    \"name\": \"app-release.apk\",
+                    \"url\": \"$CM_ARTIFACT_LINKS\",
+                    \"type\": \"apk\"
+                  }]
+                }"
+            fi
+
+  # ============================================================================
+  # iOS Release Build
+  # ============================================================================
+  ios-release:
+    name: iOS Release
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+
+    integrations:
+      app_store_connect: AppFy ASC
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - appfy_credentials
+      vars:
+        # These are injected by AppFy API at build time
+        APPFY_APP_ID: $APPFY_APP_ID
+        APPFY_STORE_ID: $APPFY_STORE_ID
+        APP_NAME: $APP_NAME
+        BUNDLE_ID: $BUNDLE_ID
+        VERSION_NAME: $VERSION_NAME
+        VERSION_CODE: $VERSION_CODE
+        API_BASE_URL: $API_BASE_URL
+        PRIMARY_DOMAIN: $PRIMARY_DOMAIN
+        ONESIGNAL_APP_ID: $ONESIGNAL_APP_ID
+        RC_PUBLIC_KEY: $RC_PUBLIC_KEY
+
+        # iOS signing (passed via env vars)
+        CM_CERTIFICATE: $CM_CERTIFICATE
+        CM_CERTIFICATE_PASSWORD: $CM_CERTIFICATE_PASSWORD
+        CM_PROVISIONING_PROFILE: $CM_PROVISIONING_PROFILE
+
+    scripts:
+      - name: Set up iOS certificates
+        script: |
+          # Decode and import certificate
+          echo $CM_CERTIFICATE | base64 --decode > certificate.p12
+
+          # Create keychain
+          keychain initialize
+          keychain add-certificates --certificate certificate.p12 --certificate-password $CM_CERTIFICATE_PASSWORD
+
+          # Decode and install provisioning profile
+          echo $CM_PROVISIONING_PROFILE | base64 --decode > profile.mobileprovision
+
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/
+          mkdir -p "$PROFILE_PATH"
+          cp profile.mobileprovision "$PROFILE_PATH"
+
+      - name: Update iOS bundle identifier
+        script: |
+          # Update bundle identifier in project
+          cd ios
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" Runner/Info.plist
+          cd ..
+
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install
+          cd ..
+
+      - name: Build IPA
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist \
+            --dart-define=APPFY_APP_ID=$APPFY_APP_ID \
+            --dart-define=APPFY_STORE_ID=$APPFY_STORE_ID \
+            --dart-define=APP_NAME="$APP_NAME" \
+            --dart-define=BUNDLE_ID=$BUNDLE_ID \
+            --dart-define=VERSION_NAME=$VERSION_NAME \
+            --dart-define=VERSION_CODE=$VERSION_CODE \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
+            --dart-define=PRIMARY_DOMAIN=$PRIMARY_DOMAIN \
+            --dart-define=ONESIGNAL_APP_ID=$ONESIGNAL_APP_ID \
+            --dart-define=RC_PUBLIC_KEY=$RC_PUBLIC_KEY
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      scripts:
+        - name: Notify AppFy
+          script: |
+            if [ -n "$APPFY_WEBHOOK_URL" ]; then
+              curl -X POST "$APPFY_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"buildId\": \"$CM_BUILD_ID\",
+                  \"buildStatus\": \"finished\",
+                  \"startedAt\": \"$CM_BUILD_START_TIME\",
+                  \"finishedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+                  \"artefacts\": [{
+                    \"name\": \"app.ipa\",
+                    \"url\": \"$CM_ARTIFACT_LINKS\",
+                    \"type\": \"ipa\"
+                  }]
+                }"
+            fi
+
+  # ============================================================================
+  # Android Debug Build (for testing)
+  # ============================================================================
+  android-debug:
+    name: Android Debug
+    instance_type: linux_x2
+    max_build_duration: 20
+
+    environment:
+      flutter: stable
+      java: 17
+      vars:
+        APPFY_APP_ID: $APPFY_APP_ID
+        APPFY_STORE_ID: $APPFY_STORE_ID
+        APP_NAME: $APP_NAME
+        BUNDLE_ID: $BUNDLE_ID
+        VERSION_NAME: $VERSION_NAME
+        VERSION_CODE: $VERSION_CODE
+        API_BASE_URL: $API_BASE_URL
+        PRIMARY_DOMAIN: $PRIMARY_DOMAIN
+
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Build debug APK
+        script: |
+          flutter build apk --debug \
+            --dart-define=APPFY_APP_ID=$APPFY_APP_ID \
+            --dart-define=APPFY_STORE_ID=$APPFY_STORE_ID \
+            --dart-define=APP_NAME="$APP_NAME" \
+            --dart-define=BUNDLE_ID=$BUNDLE_ID \
+            --dart-define=VERSION_NAME=$VERSION_NAME \
+            --dart-define=VERSION_CODE=$VERSION_CODE \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
+            --dart-define=PRIMARY_DOMAIN=$PRIMARY_DOMAIN
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk

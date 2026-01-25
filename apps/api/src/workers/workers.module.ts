@@ -6,6 +6,8 @@ import { QUEUE_NAMES } from '@appfy/shared';
 // Common modules
 import { PrismaModule } from '../common/prisma/prisma.module';
 import { RedisModule } from '../common/redis/redis.module';
+import { StorageModule } from '../common/storage/storage.module';
+import { EncryptionModule } from '../common/encryption/encryption.module';
 
 // Feature modules
 import { PushModule } from '../modules/push/push.module';
@@ -18,10 +20,12 @@ import { AutomationProcessor } from './processors/automation.processor';
 import { PushProcessor } from './processors/push.processor';
 import { CampaignProcessor } from './processors/campaign.processor';
 import { IntegrationsProcessor } from './processors/integrations.processor';
+import { BuildProcessor } from './processors/build.processor';
 
 // Services needed by processors
 import { ShopifyService } from '../modules/integrations/services/shopify.service';
 import { WooCommerceService } from '../modules/integrations/services/woocommerce.service';
+import { CodemagicService } from '../modules/builds/codemagic.service';
 
 @Module({
   imports: [
@@ -58,10 +62,13 @@ import { WooCommerceService } from '../modules/integrations/services/woocommerce
       { name: QUEUE_NAMES.PUSH_SEND },
       { name: QUEUE_NAMES.CAMPAIGN_SEND },
       { name: QUEUE_NAMES.INTEGRATIONS_SYNC },
+      { name: QUEUE_NAMES.BUILD },
     ),
 
     PrismaModule,
     RedisModule,
+    StorageModule,
+    EncryptionModule,
     PushModule,
   ],
   providers: [
@@ -73,9 +80,12 @@ import { WooCommerceService } from '../modules/integrations/services/woocommerce
     PushProcessor,
     CampaignProcessor,
     IntegrationsProcessor,
+    BuildProcessor,
     // Services needed by IntegrationsProcessor
     ShopifyService,
     WooCommerceService,
+    // Services needed by BuildProcessor
+    CodemagicService,
   ],
 })
 export class WorkersModule {}

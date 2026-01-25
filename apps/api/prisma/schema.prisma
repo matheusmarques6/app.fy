@@ -176,15 +176,28 @@ model IntegrationWebhook {
 // =============================================================================
 
 model App {
-  id             String   @id @default(uuid()) @db.Uuid
-  store_id       String   @db.Uuid
-  name           String
-  bundle_id_ios  String?
+  id                String   @id @default(uuid()) @db.Uuid
+  store_id          String   @db.Uuid
+  name              String
+  bundle_id_ios     String?
   bundle_id_android String?
-  status         String   @default("draft") // draft, building, published, suspended
-  config         Json     @default("{}")
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  status            String   @default("draft") // draft, building, published, suspended
+  config            Json     @default("{}")
+
+  // OneSignal Integration
+  onesignal_app_id  String?
+  onesignal_api_key String?  // Encrypted
+
+  // Remote Config Keypair (Ed25519)
+  rc_public_key     String?  // Base64 encoded public key
+  rc_private_key_ref String? // Reference to encrypted key in S3
+
+  // Assets
+  icon_url          String?  // S3 key for app icon
+  splash_url        String?  // S3 key for splash screen
+
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   // Relations
   store         Store          @relation(fields: [store_id], references: [id], onDelete: Cascade)
@@ -236,15 +249,16 @@ model AppCredential {
 }
 
 model BuildJob {
-  id             String   @id @default(uuid()) @db.Uuid
-  app_version_id String   @db.Uuid
-  status         String   @default("pending") // pending, running, completed, failed
-  started_at     DateTime?
-  completed_at   DateTime?
-  log_url        String?
-  error_message  String?
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  id                String    @id @default(uuid()) @db.Uuid
+  app_version_id    String    @db.Uuid
+  status            String    @default("pending") // pending, running, completed, failed
+  external_build_id String?   // Codemagic/GitHub Actions build ID
+  started_at        DateTime?
+  completed_at      DateTime?
+  log_url           String?
+  error_message     String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   // Relations
   app_version AppVersion @relation(fields: [app_version_id], references: [id], onDelete: Cascade)
