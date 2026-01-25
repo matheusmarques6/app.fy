@@ -1,0 +1,69 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App Name'
+        required: true
+        default: 'My Store'
+      bundle_id:
+        description: 'Bundle ID (e.g., com.mystore.app)'
+        required: true
+        default: 'com.appfy.store'
+      store_id:
+        description: 'Store ID'
+        required: true
+      api_base_url:
+        description: 'API Base URL'
+        required: true
+        default: 'https://api.appfy.com/v1'
+      primary_domain:
+        description: 'Store Primary Domain'
+        required: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter-template
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: |
+          flutter build apk --release \
+            --dart-define=APPFY_APP_ID=${{ github.run_id }} \
+            --dart-define=APPFY_STORE_ID=${{ inputs.store_id }} \
+            --dart-define=APP_NAME="${{ inputs.app_name }}" \
+            --dart-define=BUNDLE_ID=${{ inputs.bundle_id }} \
+            --dart-define=VERSION_NAME=1.0.0 \
+            --dart-define=VERSION_CODE=${{ github.run_number }} \
+            --dart-define=API_BASE_URL=${{ inputs.api_base_url }} \
+            --dart-define=PRIMARY_DOMAIN=${{ inputs.primary_domain }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ github.run_number }}
+          path: flutter-template/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
