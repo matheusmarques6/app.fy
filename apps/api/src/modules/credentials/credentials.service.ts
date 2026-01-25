@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 
 export interface CredentialListItem {
   id: string;
+  app_id: string;
   platform: 'ios' | 'android';
   credential_type: string;
   metadata: Record<string, unknown>;
@@ -72,6 +73,7 @@ export class CredentialsService {
 
     return credentials.map((c) => ({
       id: c.id,
+      app_id: c.app_id,
       platform: c.platform as 'ios' | 'android',
       credential_type: c.credential_type,
       metadata: c.metadata as Record<string, unknown>,
@@ -97,6 +99,7 @@ export class CredentialsService {
 
     return {
       id: credential.id,
+      app_id: credential.app_id,
       platform: credential.platform as 'ios' | 'android',
       credential_type: credential.credential_type,
       metadata: credential.metadata as Record<string, unknown>,
