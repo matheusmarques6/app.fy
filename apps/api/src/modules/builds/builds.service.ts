@@ -65,7 +65,7 @@ export class BuildsService {
 
     if (!readiness.ready) {
       throw new BadRequestException(
-        `Cannot start build: ${readiness.issues.join(', ')}`,
+        `Cannot start build: ${readiness.missing.join(', ')}`,
       );
     }
 
@@ -145,8 +145,9 @@ export class BuildsService {
 
   /**
    * List builds for an app
+   * Returns format expected by frontend: { id, version: {...}, job: {...} }
    */
-  async list(appId: string, platform?: 'ios' | 'android'): Promise<BuildListItem[]> {
+  async list(appId: string, platform?: 'ios' | 'android') {
     const builds = await this.prisma.buildJob.findMany({
       where: {
         app_version: {
@@ -163,15 +164,24 @@ export class BuildsService {
 
     return builds.map((b) => ({
       id: b.id,
-      app_version_id: b.app_version_id,
-      platform: b.app_version.platform,
-      version_name: b.app_version.version_name,
-      version_code: b.app_version.version_code,
-      status: b.status,
-      error_message: b.error_message,
-      started_at: b.started_at?.toISOString() || null,
-      completed_at: b.completed_at?.toISOString() || null,
-      created_at: b.created_at.toISOString(),
+      version: {
+        id: b.app_version.id,
+        version_code: b.app_version.version_code,
+        version_name: b.app_version.version_name,
+        platform: b.app_version.platform as 'ios' | 'android',
+        status: b.app_version.status,
+        artifact_url: b.app_version.artifact_url,
+      },
+      job: {
+        id: b.id,
+        status: b.status as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
+        error_message: b.error_message,
+        started_at: b.started_at?.toISOString(),
+        completed_at: b.completed_at?.toISOString(),
+        created_at: b.created_at.toISOString(),
+        artifact_url: b.app_version.artifact_url,
+        log_url: b.log_url,
+      },
     }));
   }
 
