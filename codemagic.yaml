@@ -4,8 +4,8 @@ workflows:
   # ============================================================================
   android-release:
     name: Android Release
-    instance_type: linux_x2
-    max_build_duration: 30
+    instance_type: linux
+    max_build_duration: 60
     working_directory: flutter-template
 
     environment:
@@ -97,8 +97,8 @@ workflows:
   # ============================================================================
   ios-release:
     name: iOS Release
-    instance_type: mac_mini_m2
-    max_build_duration: 45
+    instance_type: mac_mini_m1
+    max_build_duration: 60
     working_directory: flutter-template
 
     environment:
@@ -196,8 +196,8 @@ workflows:
   # ============================================================================
   android-debug:
     name: Android Debug
-    instance_type: linux_x2
-    max_build_duration: 20
+    instance_type: linux
+    max_build_duration: 60
     working_directory: flutter-template
 
     environment:
