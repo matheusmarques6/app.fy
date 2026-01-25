@@ -72,7 +72,6 @@ class _AppfyStoreAppState extends ConsumerState<AppfyStoreApp> {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
-        fontFamily: 'Inter',
       ),
       home: const HomeScreen(),
     );
