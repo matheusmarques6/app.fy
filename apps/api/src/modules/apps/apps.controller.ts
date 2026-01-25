@@ -35,6 +35,23 @@ export class AppsController {
   ) {}
 
   /**
+   * Create app for a store
+   * POST /v1/apps
+   */
+  @Post()
+  async create(
+    @Body() body: { store_id: string; name?: string },
+    @Headers('x-store-id') headerStoreId: string,
+    @CurrentUser() user: UserContext,
+  ) {
+    const storeId = body.store_id || headerStoreId;
+    if (!storeId) {
+      throw new BadRequestException('store_id is required');
+    }
+    return this.appsService.create(storeId, user.userId, body.name || '');
+  }
+
+  /**
    * Get app by store ID
    * GET /v1/apps?store_id=xxx
    * Also supports X-Store-Id header

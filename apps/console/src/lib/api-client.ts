@@ -816,6 +816,14 @@ export interface BuildReadiness {
 }
 
 export const appsApi = {
+  create: (token: string, storeId: string, name?: string) =>
+    request<App>('/apps', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify({ store_id: storeId, name }),
+    }),
+
   list: (token: string, storeId: string) =>
     request<App[]>('/apps', {
       headers: { Authorization: `Bearer ${token}` },

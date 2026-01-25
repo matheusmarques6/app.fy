@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -34,6 +35,51 @@ export class AppsService {
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
   ) {}
+
+  /**
+   * Create an app for a store
+   */
+  async create(storeId: string, userId: string, name: string): Promise<AppResponse> {
+    // Verify user has edit access to store
+    await this.verifyStoreEditAccess(storeId, userId);
+
+    // Check if app already exists
+    const existing = await this.prisma.app.findUnique({
+      where: { store_id: storeId },
+    });
+
+    if (existing) {
+      throw new ConflictException('App already exists for this store');
+    }
+
+    // Get store info for default name
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+    });
+
+    if (!store) {
+      throw new NotFoundException('Store not found');
+    }
+
+    const app = await this.prisma.app.create({
+      data: {
+        store_id: storeId,
+        name: name || store.name,
+        status: 'draft',
+        config: {
+          theme: {
+            primary_color: '#000000',
+            secondary_color: '#ffffff',
+          },
+          tabs: ['home', 'search', 'favorites', 'account', 'notifications'],
+        },
+      },
+    });
+
+    this.logger.log(`App created for store: ${storeId}`);
+
+    return this.mapToResponse(app);
+  }
 
   /**
    * Get the app for a store (one app per store in MVP)
