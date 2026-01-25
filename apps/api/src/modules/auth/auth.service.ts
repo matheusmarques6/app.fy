@@ -11,7 +11,6 @@ import {
   JWT_REFRESH_TOKEN_TTL,
   JWT_AUDIENCE_DEVICE,
   JWT_AUDIENCE_USER,
-  JWT_ISSUER,
 } from '@appfy/shared';
 import type {
   DeviceRegisterRequest,
@@ -236,7 +235,6 @@ export class AuthService {
     const refreshJti = randomUUID();
 
     const accessToken = this.jwtService.sign({
-      iss: JWT_ISSUER,
       aud: JWT_AUDIENCE_DEVICE,
       typ: 'device_access',
       sub: deviceId,
@@ -250,7 +248,6 @@ export class AuthService {
     });
 
     const refreshToken = this.jwtService.sign({
-      iss: JWT_ISSUER,
       aud: JWT_AUDIENCE_DEVICE,
       typ: 'device_refresh',
       sub: deviceId,
@@ -492,7 +489,6 @@ export class AuthService {
     const humanTokenTtl = 60 * 60;
 
     return this.jwtService.sign({
-      iss: JWT_ISSUER,
       aud: JWT_AUDIENCE_USER,
       typ: 'user_access',
       sub: user.id,
