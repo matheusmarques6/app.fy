@@ -82,9 +82,9 @@ export class AppsService {
   }
 
   /**
-   * Get the app for a store (one app per store in MVP)
+   * Get apps for a store (one app per store in MVP, returns array for future compatibility)
    */
-  async findByStoreId(storeId: string, userId: string): Promise<AppResponse> {
+  async findByStoreId(storeId: string, userId: string): Promise<AppResponse[]> {
     // Verify user has access to store
     await this.verifyStoreAccess(storeId, userId);
 
@@ -93,10 +93,10 @@ export class AppsService {
     });
 
     if (!app) {
-      throw new NotFoundException('App not found for this store');
+      return []; // Return empty array if no app exists
     }
 
-    return this.mapToResponse(app);
+    return [this.mapToResponse(app)];
   }
 
   /**
