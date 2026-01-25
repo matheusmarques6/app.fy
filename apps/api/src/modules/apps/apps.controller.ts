@@ -174,11 +174,12 @@ export class AppsController {
   /**
    * Check build readiness
    * GET /v1/apps/:id/build-readiness
+   * Optional ?platform=ios|android for platform-specific checks
    */
   @Get(':id/build-readiness')
   async checkBuildReadiness(
     @Param('id') id: string,
-    @Query('platform') platform: 'ios' | 'android',
+    @Query('platform') platform: 'ios' | 'android' | undefined,
     @CurrentUser() user: UserContext,
   ) {
     // Verify access

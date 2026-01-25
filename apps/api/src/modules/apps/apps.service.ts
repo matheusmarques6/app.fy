@@ -316,15 +316,13 @@ export class AppsService {
   }
 
   /**
-   * Check build readiness
+   * Check build readiness (for all platforms)
    */
-  async checkBuildReadiness(appId: string, platform: 'ios' | 'android') {
+  async checkBuildReadiness(appId: string, platform?: 'ios' | 'android') {
     const app = await this.prisma.app.findUnique({
       where: { id: appId },
       include: {
-        credentials: {
-          where: { platform },
-        },
+        credentials: true,
       },
     });
 
@@ -332,34 +330,39 @@ export class AppsService {
       throw new NotFoundException('App not found');
     }
 
-    const issues: string[] = [];
+    const hasIcon = !!app.icon_url;
+    const hasSplash = !!app.splash_url;
+    const hasIosCredentials = app.credentials.some(c => c.platform === 'ios');
+    const hasAndroidCredentials = app.credentials.some(c => c.platform === 'android');
+    const hasOneSignal = !!app.onesignal_app_id;
+    const hasKeypair = !!app.rc_public_key;
 
-    // Check bundle ID
-    if (platform === 'ios' && !app.bundle_id_ios) {
-      issues.push('iOS Bundle ID is not configured');
-    }
-    if (platform === 'android' && !app.bundle_id_android) {
-      issues.push('Android Package Name is not configured');
-    }
+    const missing: string[] = [];
 
-    // Check icon
-    if (!app.icon_url) {
-      issues.push('App icon is not uploaded');
-    }
+    if (!hasIcon) missing.push('App icon');
+    if (!hasKeypair) missing.push('Remote Config keypair');
 
-    // Check credentials
-    if (app.credentials.length === 0) {
-      issues.push(`${platform === 'ios' ? 'iOS' : 'Android'} credentials are not configured`);
+    // Platform-specific checks
+    if (!platform || platform === 'ios') {
+      if (!app.bundle_id_ios) missing.push('iOS Bundle ID');
+      if (!hasIosCredentials) missing.push('iOS credentials');
     }
-
-    // Check Remote Config keypair
-    if (!app.rc_public_key) {
-      issues.push('Remote Config keypair is not generated');
+    if (!platform || platform === 'android') {
+      if (!app.bundle_id_android) missing.push('Android Package Name');
+      if (!hasAndroidCredentials) missing.push('Android credentials');
     }
 
     return {
-      ready: issues.length === 0,
-      issues,
+      ready: missing.length === 0,
+      checks: {
+        hasIcon,
+        hasSplash,
+        hasIosCredentials,
+        hasAndroidCredentials,
+        hasOneSignal,
+        hasKeypair,
+      },
+      missing,
     };
   }
 
