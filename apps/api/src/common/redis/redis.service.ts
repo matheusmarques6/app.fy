@@ -115,14 +115,26 @@ export class RedisService implements OnModuleDestroy {
    * Add token to denylist (for revocation)
    */
   async denylistToken(jti: string, expiresInSeconds: number): Promise<void> {
-    await this.client.setex(`token:deny:${jti}`, expiresInSeconds, '1');
+    try {
+      await this.client.setex(`token:deny:${jti}`, expiresInSeconds, '1');
+    } catch (error) {
+      this.logger.error(`Failed to denylist token: ${error}`);
+      // Non-critical: token will naturally expire
+    }
   }
 
   /**
    * Check if token is denylisted
+   * Returns false on Redis errors to allow requests to proceed
    */
   async isTokenDenylisted(jti: string): Promise<boolean> {
-    return (await this.client.exists(`token:deny:${jti}`)) === 1;
+    try {
+      return (await this.client.exists(`token:deny:${jti}`)) === 1;
+    } catch (error) {
+      this.logger.error(`Failed to check token denylist: ${error}`);
+      // Allow request to proceed if Redis is down
+      return false;
+    }
   }
 
   /**
@@ -134,11 +146,16 @@ export class RedisService implements OnModuleDestroy {
     hash: string,
     ttlSeconds: number,
   ): Promise<void> {
-    await this.client.setex(
-      `refresh:${deviceId}:${familyId}`,
-      ttlSeconds,
-      hash,
-    );
+    try {
+      await this.client.setex(
+        `refresh:${deviceId}:${familyId}`,
+        ttlSeconds,
+        hash,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to store refresh token hash: ${error}`);
+      // Non-critical: rotation detection will be disabled for this session
+    }
   }
 
   /**
@@ -148,7 +165,13 @@ export class RedisService implements OnModuleDestroy {
     deviceId: string,
     familyId: string,
   ): Promise<string | null> {
-    return this.client.get(`refresh:${deviceId}:${familyId}`);
+    try {
+      return await this.client.get(`refresh:${deviceId}:${familyId}`);
+    } catch (error) {
+      this.logger.error(`Failed to get refresh token hash: ${error}`);
+      // Return null to skip rotation check if Redis is down
+      return null;
+    }
   }
 
   // =========================================================================
