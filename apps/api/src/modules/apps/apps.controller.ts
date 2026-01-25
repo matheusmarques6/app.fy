@@ -7,9 +7,11 @@ import {
   Body,
   Param,
   Query,
+  Headers,
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AppsService } from './apps.service';
@@ -35,12 +37,18 @@ export class AppsController {
   /**
    * Get app by store ID
    * GET /v1/apps?store_id=xxx
+   * Also supports X-Store-Id header
    */
   @Get()
   async findByStore(
-    @Query('store_id') storeId: string,
+    @Query('store_id') queryStoreId: string,
+    @Headers('x-store-id') headerStoreId: string,
     @CurrentUser() user: UserContext,
   ) {
+    const storeId = queryStoreId || headerStoreId;
+    if (!storeId) {
+      throw new BadRequestException('store_id query parameter or X-Store-Id header is required');
+    }
     return this.appsService.findByStoreId(storeId, user.userId);
   }
 
