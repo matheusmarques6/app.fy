@@ -30,6 +30,7 @@ export default function AppPreviewPage() {
   const [app, setApp] = useState<App | null>(null);
   const [loading, setLoading] = useState(true);
   const [previewTheme, setPreviewTheme] = useState<'light' | 'dark'>('light');
+  const [showComingSoon, setShowComingSoon] = useState(false);
 
   useEffect(() => {
     const loadApp = async () => {
@@ -267,7 +268,10 @@ export default function AppPreviewPage() {
                     <p className="text-gray-400 text-sm mt-1">
                       Baixe o app de preview para testar em seu dispositivo antes de publicar.
                     </p>
-                    <button className="mt-3 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 flex items-center gap-2">
+                    <button
+                      onClick={() => setShowComingSoon(true)}
+                      className="mt-3 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 flex items-center gap-2"
+                    >
                       <Download size={16} />
                       Baixar Preview
                     </button>
@@ -308,7 +312,10 @@ export default function AppPreviewPage() {
                     <p className="text-gray-400 text-sm mt-1">
                       Quando estiver pronto, envie seu app para a App Store e Google Play.
                     </p>
-                    <button className="mt-3 px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-2">
+                    <button
+                      onClick={() => setShowComingSoon(true)}
+                      className="mt-3 px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-2"
+                    >
                       <Rocket size={16} />
                       Publicar App
                     </button>
@@ -348,6 +355,28 @@ export default function AppPreviewPage() {
           </div>
         </div>
       </div>
+
+      {/* Coming Soon Modal */}
+      {showComingSoon && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl max-w-md w-full p-6 text-center">
+            <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Rocket className="text-blue-400" size={32} />
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Em breve!</h2>
+            <p className="text-gray-400 mb-6">
+              Esta funcionalidade está sendo desenvolvida e estará disponível em breve.
+              Fique ligado nas atualizações!
+            </p>
+            <button
+              onClick={() => setShowComingSoon(false)}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Entendi
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
