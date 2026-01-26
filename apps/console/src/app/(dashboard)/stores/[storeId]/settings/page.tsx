@@ -1,28 +1,165 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useAppStore } from '../../../../../lib/store';
-import { Save, Key, Globe, Bell, Shield } from 'lucide-react';
+import { integrationsApi } from '../../../../../lib/api-client';
+import {
+  Save,
+  Key,
+  Globe,
+  Bell,
+  Shield,
+  Check,
+  X,
+  Loader2,
+  ExternalLink,
+  AlertCircle,
+  Store,
+} from 'lucide-react';
 
 type Tab = 'general' | 'integrations' | 'push' | 'security';
 
+interface IntegrationStatus {
+  id: string;
+  platform: string;
+  status: string;
+  shop_domain?: string;
+  scopes: string[];
+  last_sync_at?: string;
+  created_at: string;
+}
+
 export default function SettingsPage() {
+  const { data: session } = useSession();
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const storeId = params.storeId as string;
   const { currentStore } = useAppStore();
-  const [activeTab, setActiveTab] = useState<Tab>('general');
+
+  // Get tab from URL or default to 'general'
+  const tabFromUrl = searchParams.get('tab') as Tab | null;
+  const [activeTab, setActiveTab] = useState<Tab>(tabFromUrl || 'general');
+
+  // Shopify connection state
+  const [shopifyStatus, setShopifyStatus] = useState<IntegrationStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [showShopifyModal, setShowShopifyModal] = useState(false);
+  const [shopDomain, setShopDomain] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const tabs = [
-    { id: 'general' as Tab, name: 'General', icon: Globe },
-    { id: 'integrations' as Tab, name: 'Integrations', icon: Key },
-    { id: 'push' as Tab, name: 'Push Settings', icon: Bell },
-    { id: 'security' as Tab, name: 'Security', icon: Shield },
+    { id: 'general' as Tab, name: 'Geral', icon: Globe },
+    { id: 'integrations' as Tab, name: 'Integrações', icon: Key },
+    { id: 'push' as Tab, name: 'Push Notifications', icon: Bell },
+    { id: 'security' as Tab, name: 'Segurança', icon: Shield },
   ];
+
+  // Update tab when URL changes
+  useEffect(() => {
+    if (tabFromUrl && tabs.some(t => t.id === tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
+
+  // Load Shopify status
+  useEffect(() => {
+    const loadShopifyStatus = async () => {
+      if (!session?.accessToken || !storeId) return;
+
+      setLoadingStatus(true);
+      try {
+        const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
+        setShopifyStatus(status);
+      } catch (err) {
+        console.error('Failed to load Shopify status:', err);
+      } finally {
+        setLoadingStatus(false);
+      }
+    };
+
+    if (activeTab === 'integrations') {
+      loadShopifyStatus();
+    }
+  }, [session?.accessToken, storeId, activeTab]);
+
+  const handleConnectShopify = async () => {
+    if (!session?.accessToken || !storeId) return;
+
+    setConnecting(true);
+    setError(null);
+
+    try {
+      await integrationsApi.connectShopifyManual(
+        session.accessToken,
+        storeId,
+        shopDomain,
+        accessToken,
+      );
+
+      setSuccess('Shopify conectado com sucesso!');
+      setShowShopifyModal(false);
+      setShopDomain('');
+      setAccessToken('');
+
+      // Reload status
+      const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
+      setShopifyStatus(status);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao conectar Shopify');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnectShopify = async () => {
+    if (!session?.accessToken || !storeId) return;
+
+    if (!confirm('Tem certeza que deseja desconectar o Shopify?')) return;
+
+    setDisconnecting(true);
+    try {
+      await integrationsApi.disconnectShopify(session.accessToken, storeId);
+      setShopifyStatus(null);
+      setSuccess('Shopify desconectado');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao desconectar');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-gray-400 mt-1">Manage your store configuration</p>
+        <h1 className="text-2xl font-bold text-white">Configurações</h1>
+        <p className="text-gray-400 mt-1">Gerencie as configurações da sua loja</p>
       </div>
+
+      {/* Success/Error Messages */}
+      {success && (
+        <div className="flex items-center gap-2 p-4 bg-green-900/20 border border-green-800 rounded-lg text-green-400">
+          <Check size={20} />
+          {success}
+          <button onClick={() => setSuccess(null)} className="ml-auto">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center gap-2 p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400">
+          <AlertCircle size={20} />
+          {error}
+          <button onClick={() => setError(null)} className="ml-auto">
+            <X size={18} />
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-800">
@@ -48,10 +185,10 @@ export default function SettingsPage() {
       {activeTab === 'general' && (
         <div className="space-y-6">
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Store Information</h3>
+            <h3 className="text-lg font-medium text-white mb-4">Informações da Loja</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Store Name</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Nome da Loja</label>
                 <input
                   type="text"
                   defaultValue={currentStore?.name}
@@ -59,7 +196,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Primary Domain</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Domínio Principal</label>
                 <input
                   type="text"
                   defaultValue={currentStore?.primary_domain}
@@ -67,7 +204,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Timezone</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Fuso Horário</label>
                 <select className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
                   <option>America/Sao_Paulo</option>
                   <option>America/New_York</option>
@@ -78,7 +215,7 @@ export default function SettingsPage() {
             <div className="mt-6 flex justify-end">
               <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
                 <Save size={18} />
-                <span>Save Changes</span>
+                <span>Salvar Alterações</span>
               </button>
             </div>
           </div>
@@ -89,55 +226,71 @@ export default function SettingsPage() {
       {activeTab === 'integrations' && (
         <div className="space-y-6">
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">E-commerce Platform</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { name: 'Shopify', connected: false },
-                { name: 'WooCommerce', connected: false },
-              ].map((platform) => (
-                <div key={platform.name} className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-                  <span className="text-white font-medium">{platform.name}</span>
-                  <button className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors">
-                    Connect
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+            <h3 className="text-lg font-medium text-white mb-4">Plataforma de E-commerce</h3>
+            <p className="text-gray-400 text-sm mb-6">
+              Conecte sua loja para sincronizar produtos, pedidos e clientes automaticamente.
+            </p>
 
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">API Keys</h3>
-            <p className="text-gray-400 mb-4">Use these keys to integrate with our SDK and APIs.</p>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Public Key</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value="pk_live_xxxxxxxxxxxxx"
-                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 font-mono text-sm"
-                  />
-                  <button className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
-                    Copy
-                  </button>
+            {loadingStatus ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="animate-spin text-blue-500" size={32} />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Shopify */}
+                <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#96bf48] rounded-lg flex items-center justify-center">
+                      <Store className="text-white" size={20} />
+                    </div>
+                    <div>
+                      <span className="text-white font-medium">Shopify</span>
+                      {shopifyStatus?.status === 'active' && (
+                        <p className="text-sm text-gray-400">{shopifyStatus.shop_domain}</p>
+                      )}
+                    </div>
+                  </div>
+                  {shopifyStatus?.status === 'active' ? (
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1 text-green-400 text-sm">
+                        <Check size={16} />
+                        Conectado
+                      </span>
+                      <button
+                        onClick={handleDisconnectShopify}
+                        disabled={disconnecting}
+                        className="px-3 py-1.5 text-sm bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded transition-colors"
+                      >
+                        {disconnecting ? 'Desconectando...' : 'Desconectar'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowShopifyModal(true)}
+                      className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    >
+                      Conectar
+                    </button>
+                  )}
+                </div>
+
+                {/* WooCommerce - Coming Soon */}
+                <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg opacity-60">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#7f54b3] rounded-lg flex items-center justify-center">
+                      <Store className="text-white" size={20} />
+                    </div>
+                    <div>
+                      <span className="text-white font-medium">WooCommerce</span>
+                      <p className="text-sm text-gray-500">Em breve</p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1.5 text-xs bg-gray-700 text-gray-400 rounded">
+                    Em breve
+                  </span>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Secret Key</label>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    readOnly
-                    value="sk_live_xxxxxxxxxxxxx"
-                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 font-mono text-sm"
-                  />
-                  <button className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
-                    Reveal
-                  </button>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -146,13 +299,13 @@ export default function SettingsPage() {
       {activeTab === 'push' && (
         <div className="space-y-6">
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">OneSignal Configuration</h3>
+            <h3 className="text-lg font-medium text-white mb-4">Configuração OneSignal</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">App ID</label>
                 <input
                   type="text"
-                  placeholder="Enter your OneSignal App ID"
+                  placeholder="Digite seu OneSignal App ID"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -160,7 +313,7 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-300 mb-1">REST API Key</label>
                 <input
                   type="password"
-                  placeholder="Enter your OneSignal REST API Key"
+                  placeholder="Digite sua OneSignal REST API Key"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -168,7 +321,7 @@ export default function SettingsPage() {
             <div className="mt-6 flex justify-end">
               <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
                 <Save size={18} />
-                <span>Save Configuration</span>
+                <span>Salvar Configuração</span>
               </button>
             </div>
           </div>
@@ -179,7 +332,7 @@ export default function SettingsPage() {
       {activeTab === 'security' && (
         <div className="space-y-6">
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Webhook Security</h3>
+            <h3 className="text-lg font-medium text-white mb-4">Segurança de Webhooks</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Webhook Signing Secret</label>
@@ -191,26 +344,131 @@ export default function SettingsPage() {
                     className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 font-mono text-sm"
                   />
                   <button className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
-                    Regenerate
+                    Regenerar
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Use this secret to verify webhook signatures from your e-commerce platform.
+                  Use este secret para verificar assinaturas de webhooks da sua plataforma de e-commerce.
                 </p>
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Allowed Origins (CORS)</h3>
-            <textarea
-              placeholder="https://mystore.com&#10;https://www.mystore.com"
-              rows={4}
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              One origin per line. Leave empty to allow all origins.
-            </p>
+      {/* Shopify Connection Modal */}
+      {showShopifyModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <h2 className="text-xl font-semibold text-white">Conectar Shopify</h2>
+              <button
+                onClick={() => setShowShopifyModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Instructions */}
+              <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+                <h3 className="text-blue-300 font-medium mb-2">Como obter o Access Token:</h3>
+                <ol className="text-sm text-blue-200/80 space-y-2 list-decimal list-inside">
+                  <li>Acesse o admin da sua loja Shopify</li>
+                  <li>Vá em <strong>Configurações → Apps e canais de vendas</strong></li>
+                  <li>Clique em <strong>Desenvolver apps</strong></li>
+                  <li>Clique em <strong>Criar um app</strong> e dê um nome (ex: &quot;AppFy&quot;)</li>
+                  <li>
+                    Em <strong>Configurar escopos da API Admin</strong>, ative:
+                    <ul className="ml-4 mt-1 text-xs text-blue-200/60">
+                      <li>• read_products</li>
+                      <li>• read_orders</li>
+                      <li>• read_customers</li>
+                      <li>• read_inventory</li>
+                    </ul>
+                  </li>
+                  <li>Clique em <strong>Instalar app</strong></li>
+                  <li>Copie o <strong>Admin API access token</strong></li>
+                </ol>
+                <a
+                  href="https://help.shopify.com/pt-BR/manual/apps/app-types/custom-apps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-blue-400 text-sm mt-3 hover:underline"
+                >
+                  Ver documentação completa
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+
+              {/* Form */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Domínio da Loja
+                  </label>
+                  <input
+                    type="text"
+                    value={shopDomain}
+                    onChange={(e) => setShopDomain(e.target.value)}
+                    placeholder="minha-loja.myshopify.com"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    O domínio .myshopify.com da sua loja
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Admin API Access Token
+                  </label>
+                  <input
+                    type="password"
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    O token começa com &quot;shpat_&quot;
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-800">
+              <button
+                onClick={() => setShowShopifyModal(false)}
+                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConnectShopify}
+                disabled={connecting || !shopDomain || !accessToken}
+                className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-blue-800 disabled:cursor-not-allowed"
+              >
+                {connecting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Conectando...
+                  </>
+                ) : (
+                  <>
+                    <Check size={18} />
+                    Conectar
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

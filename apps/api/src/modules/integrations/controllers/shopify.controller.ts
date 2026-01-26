@@ -124,6 +124,35 @@ export class ShopifyController {
   }
 
   /**
+   * Connect Shopify manually with access token
+   * POST /v1/integrations/shopify/connect-manual
+   */
+  @Post('connect-manual')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async connectManual(
+    @Body() body: { shop_domain: string; access_token: string },
+    @Req() req: Request,
+  ): Promise<{ success: boolean; integration_id: string }> {
+    const storeId = req.user?.['store_id'];
+    if (!storeId) {
+      throw new BadRequestException('Store ID required');
+    }
+
+    if (!body.shop_domain || !body.access_token) {
+      throw new BadRequestException('shop_domain and access_token are required');
+    }
+
+    const result = await this.shopifyService.connectManual(
+      storeId,
+      body.shop_domain,
+      body.access_token,
+    );
+
+    return { success: true, integration_id: result.integrationId };
+  }
+
+  /**
    * Get Shopify integration status
    * GET /v1/integrations/shopify/status
    */

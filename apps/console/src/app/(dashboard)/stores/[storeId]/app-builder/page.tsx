@@ -292,11 +292,11 @@ export default function AppBuilderPage() {
           </p>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => router.push(`/stores/${storeId}/settings`)}
+              onClick={() => router.push(`/stores/${storeId}/settings?tab=integrations`)}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
             >
               <Link size={20} />
-              Conectar {currentStore?.platform === 'shopify' ? 'Shopify' : 'Loja'}
+              Conectar Loja
             </button>
             <button
               onClick={() => router.back()}

@@ -931,6 +931,21 @@ export const integrationsApi = {
       headers: { Authorization: `Bearer ${token}` },
       storeId,
     }),
+
+  connectShopifyManual: (token: string, storeId: string, shopDomain: string, accessToken: string) =>
+    request<{ success: boolean; integration_id: string }>('/integrations/shopify/connect-manual', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify({ shop_domain: shopDomain, access_token: accessToken }),
+    }),
+
+  disconnectShopify: (token: string, storeId: string) =>
+    request<{ success: boolean }>('/integrations/shopify/disconnect', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
 };
 
 // ============================================================================

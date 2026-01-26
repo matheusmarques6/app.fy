@@ -186,6 +186,73 @@ export class ShopifyService {
   }
 
   /**
+   * Connect Shopify store manually with access token
+   * Used when customer has their own Shopify app/token
+   */
+  async connectManual(
+    storeId: string,
+    shopDomain: string,
+    accessToken: string,
+  ): Promise<{ integrationId: string }> {
+    // Normalize shop domain
+    const shop = this.normalizeShopDomain(shopDomain);
+
+    // Verify the token works by fetching shop info
+    let shopInfo: any;
+    try {
+      shopInfo = await this.getShopInfo(shop, accessToken);
+    } catch (error) {
+      this.logger.error(`Invalid Shopify token: ${error}`);
+      throw new BadRequestException(
+        'Token inválido. Verifique se o Access Token está correto e tem as permissões necessárias.',
+      );
+    }
+
+    // Save integration
+    const integration = await this.prisma.integration.upsert({
+      where: {
+        store_id_platform: {
+          store_id: storeId,
+          platform: 'shopify',
+        },
+      },
+      create: {
+        store_id: storeId,
+        platform: 'shopify',
+        status: 'active',
+        shop_domain: shop,
+        access_token_ref: this.encryptToken(accessToken),
+        scopes: this.scopes,
+        metadata: {
+          shop_name: shopInfo.name,
+          shop_email: shopInfo.email,
+          currency: shopInfo.currency,
+          timezone: shopInfo.timezone,
+          connected_via: 'manual',
+        },
+      },
+      update: {
+        status: 'active',
+        shop_domain: shop,
+        access_token_ref: this.encryptToken(accessToken),
+        scopes: this.scopes,
+        metadata: {
+          shop_name: shopInfo.name,
+          shop_email: shopInfo.email,
+          currency: shopInfo.currency,
+          timezone: shopInfo.timezone,
+          connected_via: 'manual',
+        },
+        updated_at: new Date(),
+      },
+    });
+
+    this.logger.log(`Shopify manually connected for store ${storeId}: ${shop}`);
+
+    return { integrationId: integration.id };
+  }
+
+  /**
    * Exchange authorization code for access token
    */
   private async exchangeCodeForToken(shop: string, code: string): Promise<string> {
