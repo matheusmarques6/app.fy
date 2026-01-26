@@ -28,6 +28,8 @@ import {
   ShopifyOAuthCallbackDto,
   ShopifyInstallResponseDto,
   IntegrationResponseDto,
+  ShopifyCredentialsDto,
+  ShopifyCredentialsResponseDto,
 } from '../dto/shopify.dto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { QUEUE_NAMES } from '@appfy/shared';
@@ -49,6 +51,45 @@ export class ShopifyController {
   ) {}
 
   // ==========================================================================
+  // Credentials Management (per-store Shopify App)
+  // ==========================================================================
+
+  /**
+   * Save Shopify App credentials for this store
+   * POST /v1/integrations/shopify/credentials
+   */
+  @Post('credentials')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async saveCredentials(
+    @Body() dto: ShopifyCredentialsDto,
+    @Headers('x-store-id') storeId: string,
+  ): Promise<{ success: boolean }> {
+    if (!storeId) {
+      throw new BadRequestException('X-Store-Id header is required');
+    }
+
+    await this.shopifyService.saveCredentials(storeId, dto.api_key, dto.api_secret);
+    return { success: true };
+  }
+
+  /**
+   * Get Shopify App credentials status for this store
+   * GET /v1/integrations/shopify/credentials
+   */
+  @Get('credentials')
+  @UseGuards(JwtAuthGuard)
+  async getCredentials(
+    @Headers('x-store-id') storeId: string,
+  ): Promise<ShopifyCredentialsResponseDto> {
+    if (!storeId) {
+      throw new BadRequestException('X-Store-Id header is required');
+    }
+
+    return this.shopifyService.getCredentialsStatus(storeId);
+  }
+
+  // ==========================================================================
   // OAuth Endpoints
   // ==========================================================================
 
@@ -67,7 +108,7 @@ export class ShopifyController {
       throw new BadRequestException('X-Store-Id header is required');
     }
 
-    const { installUrl, state } = this.shopifyService.generateInstallUrl(storeId, dto.shop);
+    const { installUrl, state } = await this.shopifyService.generateInstallUrl(storeId, dto.shop);
 
     return { install_url: installUrl, state };
   }

@@ -151,3 +151,19 @@ export class ShopifyInstallResponseDto {
   install_url: string;
   state: string;
 }
+
+// Shopify App Credentials (per-store)
+export class ShopifyCredentialsDto {
+  @IsString()
+  @IsNotEmpty()
+  api_key: string;
+
+  @IsString()
+  @IsNotEmpty()
+  api_secret: string;
+}
+
+export class ShopifyCredentialsResponseDto {
+  configured: boolean;
+  api_key_preview?: string; // Only first/last 4 chars
+}

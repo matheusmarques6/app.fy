@@ -52,19 +52,26 @@ export class ShopifyService {
 
   /**
    * Generate Shopify OAuth install URL
+   * Uses per-store credentials configured by the customer
    */
-  generateInstallUrl(storeId: string, shop: string): { installUrl: string; state: string } {
-    const apiKey = this.config.get<string>('SHOPIFY_API_KEY');
-    const redirectUri = this.config.get<string>('SHOPIFY_REDIRECT_URI');
+  async generateInstallUrl(storeId: string, shop: string): Promise<{ installUrl: string; state: string }> {
+    // Get store's Shopify credentials
+    const credentials = await this.getStoreCredentials(storeId);
+    if (!credentials) {
+      throw new BadRequestException(
+        'Credenciais Shopify não configuradas. Configure o API Key e Secret do seu app Shopify primeiro.',
+      );
+    }
 
-    if (!apiKey || !redirectUri) {
-      throw new BadRequestException('Shopify integration not configured');
+    const redirectUri = this.config.get<string>('SHOPIFY_REDIRECT_URI');
+    if (!redirectUri) {
+      throw new BadRequestException('SHOPIFY_REDIRECT_URI não configurado no sistema');
     }
 
     // Validate and normalize shop domain
     const normalizedShop = this.normalizeShopDomain(shop);
     if (!this.isValidShopDomain(normalizedShop)) {
-      throw new BadRequestException('Invalid Shopify shop domain');
+      throw new BadRequestException('Domínio Shopify inválido');
     }
 
     // Generate state with nonce and timestamp for anti-CSRF + expiration
@@ -73,7 +80,7 @@ export class ShopifyService {
     const state = Buffer.from(JSON.stringify({ storeId, nonce, timestamp })).toString('base64');
 
     const installUrl = `https://${normalizedShop}/admin/oauth/authorize?` +
-      `client_id=${apiKey}&` +
+      `client_id=${credentials.apiKey}&` +
       `scope=${this.scopes.join(',')}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `state=${state}`;
@@ -102,13 +109,24 @@ export class ShopifyService {
       throw new BadRequestException('Invalid shop domain');
     }
 
-    // 2. Validate HMAC signature from querystring
+    // 2. Decode state first to get storeId (needed to fetch credentials)
+    let storeId: string;
+    let stateTimestamp: number;
+    try {
+      const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+      storeId = decoded.storeId;
+      stateTimestamp = decoded.timestamp;
+    } catch (e) {
+      throw new BadRequestException('Invalid state parameter');
+    }
+
+    // 3. Validate HMAC signature using store's credentials
     if (!hmac) {
       throw new BadRequestException('Missing HMAC signature');
     }
-    this.validateHmac({ code, shop, state, timestamp }, hmac);
+    await this.validateHmac({ code, shop, state, timestamp }, hmac, storeId);
 
-    // 3. Validate timestamp is not too old (10 minute window)
+    // 4. Validate timestamps
     if (timestamp) {
       const callbackTimestamp = parseInt(timestamp, 10) * 1000; // Convert to ms
       if (Date.now() - callbackTimestamp > STATE_EXPIRATION_MS) {
@@ -116,24 +134,13 @@ export class ShopifyService {
       }
     }
 
-    // 4. Decode and validate state
-    let storeId: string;
-    let stateTimestamp: number;
-    try {
-      const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
-      storeId = decoded.storeId;
-      stateTimestamp = decoded.timestamp;
-
-      // Validate state hasn't expired
-      if (stateTimestamp && Date.now() - stateTimestamp > STATE_EXPIRATION_MS) {
-        throw new BadRequestException('OAuth state expired');
-      }
-    } catch (e) {
-      throw new BadRequestException('Invalid state parameter');
+    // Validate state hasn't expired
+    if (stateTimestamp && Date.now() - stateTimestamp > STATE_EXPIRATION_MS) {
+      throw new BadRequestException('OAuth state expired');
     }
 
-    // Exchange code for access token
-    const accessToken = await this.exchangeCodeForToken(shop, code);
+    // Exchange code for access token (using store's credentials)
+    const accessToken = await this.exchangeCodeForToken(shop, code, storeId);
 
     // Get shop info
     const shopInfo = await this.getShopInfo(shop, accessToken);
@@ -254,17 +261,20 @@ export class ShopifyService {
 
   /**
    * Exchange authorization code for access token
+   * Uses per-store credentials
    */
-  private async exchangeCodeForToken(shop: string, code: string): Promise<string> {
-    const apiKey = this.config.get<string>('SHOPIFY_API_KEY');
-    const apiSecret = this.config.get<string>('SHOPIFY_API_SECRET');
+  private async exchangeCodeForToken(shop: string, code: string, storeId: string): Promise<string> {
+    const credentials = await this.getStoreCredentials(storeId);
+    if (!credentials) {
+      throw new BadRequestException('Credenciais Shopify não encontradas para esta loja');
+    }
 
     const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: apiKey,
-        client_secret: apiSecret,
+        client_id: credentials.apiKey,
+        client_secret: credentials.apiSecret,
         code,
       }),
     });
@@ -834,10 +844,10 @@ export class ShopifyService {
     return normalized;
   }
 
-  private validateHmac(params: Record<string, string | undefined>, hmac: string): void {
-    const apiSecret = this.config.get<string>('SHOPIFY_API_SECRET');
-    if (!apiSecret) {
-      throw new BadRequestException('Shopify not configured');
+  private async validateHmac(params: Record<string, string | undefined>, hmac: string, storeId: string): Promise<void> {
+    const credentials = await this.getStoreCredentials(storeId);
+    if (!credentials) {
+      throw new BadRequestException('Credenciais Shopify não encontradas para esta loja');
     }
 
     // Build query string (sorted, without hmac)
@@ -847,7 +857,7 @@ export class ShopifyService {
 
     const message = entries.map(([key, value]) => `${key}=${value}`).join('&');
 
-    const hash = createHmac('sha256', apiSecret)
+    const hash = createHmac('sha256', credentials.apiSecret)
       .update(message)
       .digest('hex');
 
@@ -934,5 +944,88 @@ export class ShopifyService {
         data: { device_id: device.id },
       });
     }
+  }
+
+  // ==========================================================================
+  // Per-Store Credentials Management
+  // ==========================================================================
+
+  /**
+   * Save Shopify App credentials for a store
+   * These are the API Key and Secret from the customer's own Shopify App
+   */
+  async saveCredentials(storeId: string, apiKey: string, apiSecret: string): Promise<void> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+    });
+
+    if (!store) {
+      throw new BadRequestException('Store not found');
+    }
+
+    const settings = (store.settings as Record<string, any>) || {};
+
+    // Store encrypted credentials
+    settings.shopify_credentials = {
+      api_key: this.encryptToken(apiKey),
+      api_secret: this.encryptToken(apiSecret),
+      configured_at: new Date().toISOString(),
+    };
+
+    await this.prisma.store.update({
+      where: { id: storeId },
+      data: { settings },
+    });
+
+    this.logger.log(`Shopify credentials saved for store ${storeId}`);
+  }
+
+  /**
+   * Get Shopify credentials status for a store (without exposing secrets)
+   */
+  async getCredentialsStatus(storeId: string): Promise<{ configured: boolean; api_key_preview?: string }> {
+    const credentials = await this.getStoreCredentials(storeId);
+
+    if (!credentials) {
+      return { configured: false };
+    }
+
+    // Show only first 4 and last 4 characters of API key
+    const apiKey = credentials.apiKey;
+    const preview = apiKey.length > 8
+      ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
+      : '****';
+
+    return {
+      configured: true,
+      api_key_preview: preview,
+    };
+  }
+
+  /**
+   * Get decrypted Shopify credentials for a store
+   * Returns null if not configured
+   */
+  async getStoreCredentials(storeId: string): Promise<{ apiKey: string; apiSecret: string } | null> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { settings: true },
+    });
+
+    if (!store) {
+      return null;
+    }
+
+    const settings = store.settings as Record<string, any>;
+    const shopifyCredentials = settings?.shopify_credentials;
+
+    if (!shopifyCredentials?.api_key || !shopifyCredentials?.api_secret) {
+      return null;
+    }
+
+    return {
+      apiKey: this.decryptToken(shopifyCredentials.api_key),
+      apiSecret: this.decryptToken(shopifyCredentials.api_secret),
+    };
   }
 }

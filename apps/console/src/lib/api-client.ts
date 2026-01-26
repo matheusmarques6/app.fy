@@ -912,6 +912,21 @@ export interface StorePreview {
 }
 
 export const integrationsApi = {
+  // Shopify credentials management (per-store)
+  getShopifyCredentials: (token: string, storeId: string) =>
+    request<{ configured: boolean; api_key_preview?: string }>('/integrations/shopify/credentials', {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  saveShopifyCredentials: (token: string, storeId: string, apiKey: string, apiSecret: string) =>
+    request<{ success: boolean }>('/integrations/shopify/credentials', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }),
+    }),
+
   getShopifyPreview: (token: string, storeId: string) =>
     request<StorePreview>('/integrations/shopify/preview', {
       headers: { Authorization: `Bearer ${token}` },
