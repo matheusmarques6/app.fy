@@ -58,3 +58,4 @@ GoogleService-Info.plist
 tmp/
 temp/
 *.tmp
+tsconfig.tsbuildinfo
