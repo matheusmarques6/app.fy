@@ -6,6 +6,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EncryptionService } from '../../common/encryption/encryption.service';
 import { UpdateAppDto } from './dto';
@@ -167,6 +168,7 @@ export class AppsService {
         ...(dto.name && { name: dto.name }),
         ...(dto.bundle_id_ios && { bundle_id_ios: dto.bundle_id_ios }),
         ...(dto.bundle_id_android && { bundle_id_android: dto.bundle_id_android }),
+        ...(dto.config && { config: dto.config as Prisma.InputJsonValue }),
       },
     });
 

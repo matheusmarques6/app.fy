@@ -1,4 +1,4 @@
-import { IsString, IsOptional, Matches, MaxLength } from 'class-validator';
+import { IsString, IsOptional, Matches, MaxLength, IsObject } from 'class-validator';
 
 export class UpdateAppDto {
   @IsOptional()
@@ -19,4 +19,8 @@ export class UpdateAppDto {
     message: 'Package name must be in reverse domain format (e.g., com.example.app)',
   })
   bundle_id_android?: string;
+
+  @IsOptional()
+  @IsObject()
+  config?: Record<string, unknown>;
 }
