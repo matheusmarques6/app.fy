@@ -50,11 +50,10 @@ export class WooCommerceController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async connect(
     @Body() dto: WooCommerceConnectDto,
-    @Req() req: Request,
+    @Headers('x-store-id') storeId: string,
   ): Promise<{ integration_id: string }> {
-    const storeId = req.user?.['store_id'];
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     const { integrationId } = await this.wooService.connect(storeId, dto);
@@ -69,10 +68,9 @@ export class WooCommerceController {
   @Post('disconnect')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async disconnect(@Req() req: Request): Promise<{ success: boolean }> {
-    const storeId = req.user?.['store_id'];
+  async disconnect(@Headers('x-store-id') storeId: string): Promise<{ success: boolean }> {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     await this.prisma.integration.updateMany({
@@ -96,10 +94,9 @@ export class WooCommerceController {
    */
   @Get('status')
   @UseGuards(JwtAuthGuard)
-  async getStatus(@Req() req: Request): Promise<IntegrationResponseDto | null> {
-    const storeId = req.user?.['store_id'];
+  async getStatus(@Headers('x-store-id') storeId: string): Promise<IntegrationResponseDto | null> {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     const integration = await this.prisma.integration.findUnique({
@@ -246,10 +243,9 @@ export class WooCommerceController {
   @Post('sync')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.ACCEPTED)
-  async triggerSync(@Req() req: Request): Promise<{ queued: boolean }> {
-    const storeId = req.user?.['store_id'];
+  async triggerSync(@Headers('x-store-id') storeId: string): Promise<{ queued: boolean }> {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     const integration = await this.prisma.integration.findUnique({

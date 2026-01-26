@@ -61,11 +61,10 @@ export class ShopifyController {
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async install(
     @Body() dto: ShopifyInstallDto,
-    @Req() req: Request,
+    @Headers('x-store-id') storeId: string,
   ): Promise<ShopifyInstallResponseDto> {
-    const storeId = req.user?.['store_id'];
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     const { installUrl, state } = this.shopifyService.generateInstallUrl(storeId, dto.shop);
@@ -102,10 +101,9 @@ export class ShopifyController {
   @Post('disconnect')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async disconnect(@Req() req: Request): Promise<{ success: boolean }> {
-    const storeId = req.user?.['store_id'];
+  async disconnect(@Headers('x-store-id') storeId: string): Promise<{ success: boolean }> {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     await this.prisma.integration.updateMany({
@@ -132,11 +130,10 @@ export class ShopifyController {
   @HttpCode(HttpStatus.OK)
   async connectManual(
     @Body() body: { shop_domain: string; access_token: string },
-    @Req() req: Request,
+    @Headers('x-store-id') storeId: string,
   ): Promise<{ success: boolean; integration_id: string }> {
-    const storeId = req.user?.['store_id'];
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     if (!body.shop_domain || !body.access_token) {
@@ -158,10 +155,9 @@ export class ShopifyController {
    */
   @Get('status')
   @UseGuards(JwtAuthGuard)
-  async getStatus(@Req() req: Request): Promise<IntegrationResponseDto | null> {
-    const storeId = req.user?.['store_id'];
+  async getStatus(@Headers('x-store-id') storeId: string): Promise<IntegrationResponseDto | null> {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     const integration = await this.prisma.integration.findUnique({
@@ -194,10 +190,9 @@ export class ShopifyController {
    */
   @Get('preview')
   @UseGuards(JwtAuthGuard)
-  async getStorePreview(@Req() req: Request) {
-    const storeId = req.user?.['store_id'];
+  async getStorePreview(@Headers('x-store-id') storeId: string) {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     return this.shopifyService.getStorePreview(storeId);
@@ -343,10 +338,9 @@ export class ShopifyController {
   @Post('sync')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.ACCEPTED)
-  async triggerSync(@Req() req: Request): Promise<{ queued: boolean }> {
-    const storeId = req.user?.['store_id'];
+  async triggerSync(@Headers('x-store-id') storeId: string): Promise<{ queued: boolean }> {
     if (!storeId) {
-      throw new BadRequestException('Store ID required');
+      throw new BadRequestException('X-Store-Id header is required');
     }
 
     const integration = await this.prisma.integration.findUnique({
