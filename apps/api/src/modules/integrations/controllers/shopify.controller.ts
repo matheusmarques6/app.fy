@@ -159,6 +159,21 @@ export class ShopifyController {
     };
   }
 
+  /**
+   * Get store preview data for App Builder
+   * GET /v1/integrations/shopify/preview
+   */
+  @Get('preview')
+  @UseGuards(JwtAuthGuard)
+  async getStorePreview(@Req() req: Request) {
+    const storeId = req.user?.['store_id'];
+    if (!storeId) {
+      throw new BadRequestException('Store ID required');
+    }
+
+    return this.shopifyService.getStorePreview(storeId);
+  }
+
   // ==========================================================================
   // Webhook Endpoints
   // ==========================================================================

@@ -680,6 +680,77 @@ export class ShopifyService {
     return this.decryptToken(integration.access_token_ref);
   }
 
+  /**
+   * Get store preview data for App Builder (logo, products, etc.)
+   */
+  async getStorePreview(storeId: string): Promise<{
+    connected: boolean;
+    shop?: {
+      name: string;
+      domain: string;
+      logo?: string;
+      currency: string;
+    };
+    products: Array<{
+      id: string;
+      title: string;
+      image?: string;
+      price: string;
+      currency: string;
+    }>;
+  }> {
+    const integration = await this.prisma.integration.findUnique({
+      where: {
+        store_id_platform: {
+          store_id: storeId,
+          platform: 'shopify',
+        },
+      },
+    });
+
+    if (!integration || integration.status !== 'active' || !integration.access_token_ref) {
+      return { connected: false, products: [] };
+    }
+
+    const accessToken = this.decryptToken(integration.access_token_ref);
+    const shop = integration.shop_domain!;
+
+    try {
+      // Fetch shop info
+      const shopInfo = await this.getShopInfo(shop, accessToken);
+
+      // Fetch products (limit 8 for preview)
+      const productsResponse = await this.shopifyApiRequest(
+        shop,
+        accessToken,
+        'GET',
+        '/products.json?limit=8&status=active',
+      );
+
+      const products = (productsResponse.products || []).map((p: any) => ({
+        id: p.id.toString(),
+        title: p.title,
+        image: p.image?.src || p.images?.[0]?.src,
+        price: p.variants?.[0]?.price || '0.00',
+        currency: shopInfo.currency || 'BRL',
+      }));
+
+      return {
+        connected: true,
+        shop: {
+          name: shopInfo.name,
+          domain: integration.shop_domain!,
+          logo: shopInfo.logo?.url || undefined,
+          currency: shopInfo.currency,
+        },
+        products,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to fetch store preview: ${error}`);
+      return { connected: true, products: [] };
+    }
+  }
+
   // ==========================================================================
   // Helpers
   // ==========================================================================

@@ -11,6 +11,24 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { EncryptionService } from '../../common/encryption/encryption.service';
 import { UpdateAppDto } from './dto';
 
+export interface StorePreviewData {
+  connected: boolean;
+  platform?: string;
+  shop?: {
+    name: string;
+    domain: string;
+    logo?: string;
+    currency: string;
+  };
+  products: Array<{
+    id: string;
+    title: string;
+    image?: string;
+    price: string;
+    currency: string;
+  }>;
+}
+
 export interface AppResponse {
   id: string;
   store_id: string;
@@ -399,6 +417,39 @@ export class AppsService {
     if (!membership) {
       throw new ForbiddenException('No permission to edit this store');
     }
+  }
+
+  /**
+   * Get store integration status for App Builder
+   */
+  async getIntegrationStatus(storeId: string, userId: string): Promise<{
+    connected: boolean;
+    platform?: string;
+    shopDomain?: string;
+    shopName?: string;
+  }> {
+    // Verify user has access
+    await this.verifyStoreAccess(storeId, userId);
+
+    const integration = await this.prisma.integration.findFirst({
+      where: {
+        store_id: storeId,
+        status: 'active',
+      },
+    });
+
+    if (!integration) {
+      return { connected: false };
+    }
+
+    const metadata = integration.metadata as Record<string, unknown> | null;
+
+    return {
+      connected: true,
+      platform: integration.platform,
+      shopDomain: integration.shop_domain || undefined,
+      shopName: (metadata?.shop_name as string) || undefined,
+    };
   }
 
   private mapToResponse(app: {

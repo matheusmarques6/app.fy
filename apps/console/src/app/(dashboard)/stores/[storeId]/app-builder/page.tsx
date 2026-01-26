@@ -19,9 +19,13 @@ import {
   Heart,
   ShoppingBag,
   User,
+  AlertCircle,
+  Link,
+  Store,
+  Sparkles,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
-import { appsApi, App } from '@/lib/api-client';
+import { appsApi, integrationsApi, App, StorePreview } from '@/lib/api-client';
 
 // Template definitions
 const templates = [
@@ -29,42 +33,36 @@ const templates = [
     id: 'classic',
     name: 'Classic',
     category: 'Geral',
-    preview: '/templates/classic.png',
     description: 'Layout clássico com banner e grid de produtos',
   },
   {
     id: 'modern',
     name: 'Modern',
     category: 'Geral',
-    preview: '/templates/modern.png',
     description: 'Design moderno com cards e animações suaves',
   },
   {
     id: 'minimal',
     name: 'Minimal',
     category: 'Geral',
-    preview: '/templates/minimal.png',
     description: 'Layout limpo e minimalista',
   },
   {
     id: 'fashion',
     name: 'Fashion',
     category: 'Moda',
-    preview: '/templates/fashion.png',
     description: 'Ideal para lojas de moda e acessórios',
   },
   {
     id: 'tech',
     name: 'Tech',
     category: 'Digital',
-    preview: '/templates/tech.png',
     description: 'Perfeito para eletrônicos e tecnologia',
   },
   {
     id: 'food',
     name: 'Food',
     category: 'Alimentos',
-    preview: '/templates/food.png',
     description: 'Otimizado para delivery e restaurantes',
   },
 ];
@@ -111,7 +109,8 @@ export default function AppBuilderPage() {
   const storeId = params.storeId as string;
   const { currentStore } = useAppStore();
 
-  const [step, setStep] = useState(1);
+  // State
+  const [step, setStep] = useState(0); // 0 = onboarding, 1-4 = wizard steps
   const [config, setConfig] = useState<AppConfig>({
     ...defaultConfig,
     name: currentStore?.name || '',
@@ -122,24 +121,40 @@ export default function AppBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('Geral');
 
+  // Integration & store preview state
+  const [integrationStatus, setIntegrationStatus] = useState<{
+    connected: boolean;
+    platform?: string;
+    shopDomain?: string;
+    shopName?: string;
+  } | null>(null);
+  const [storePreview, setStorePreview] = useState<StorePreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
   const steps = [
+    { id: 0, name: 'Sua Loja', icon: Store },
     { id: 1, name: 'Template', icon: Image },
     { id: 2, name: 'Informações', icon: Smartphone },
     { id: 3, name: 'Cores e Fonte', icon: Palette },
     { id: 4, name: 'Criar App', icon: Check },
   ];
 
-  // Load existing app
+  // Load existing app and integration status
   useEffect(() => {
-    const loadApp = async () => {
+    const loadData = async () => {
       if (!session?.accessToken || !storeId) return;
 
       try {
         setLoading(true);
+
+        // Load integration status
+        const status = await appsApi.getIntegrationStatus(session.accessToken, storeId);
+        setIntegrationStatus(status);
+
+        // Load existing app
         const apps = await appsApi.list(session.accessToken, storeId);
         if (apps.length > 0) {
           setApp(apps[0]);
-          // Load config from existing app
           const existingConfig = apps[0].config as Record<string, unknown>;
           if (existingConfig) {
             setConfig({
@@ -155,14 +170,32 @@ export default function AppBuilderPage() {
             });
           }
         }
+
+        // If connected, load store preview
+        if (status?.connected && status.platform === 'shopify') {
+          setLoadingPreview(true);
+          try {
+            const preview = await integrationsApi.getShopifyPreview(session.accessToken, storeId);
+            setStorePreview(preview);
+
+            // Auto-fill name from store if not set
+            if (preview.shop?.name && !config.name) {
+              setConfig(prev => ({ ...prev, name: preview.shop!.name }));
+            }
+          } catch (err) {
+            console.error('Failed to load store preview:', err);
+          } finally {
+            setLoadingPreview(false);
+          }
+        }
       } catch (err) {
-        console.error('Failed to load app:', err);
+        console.error('Failed to load data:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    loadApp();
+    loadData();
   }, [session?.accessToken, storeId, currentStore?.name]);
 
   // Update config when store changes
@@ -177,7 +210,7 @@ export default function AppBuilderPage() {
   };
 
   const handleBack = () => {
-    if (step > 1) setStep(step - 1);
+    if (step > 0) setStep(step - 1);
   };
 
   const handleCreateApp = async () => {
@@ -202,23 +235,19 @@ export default function AppBuilderPage() {
       };
 
       if (app) {
-        // Update existing app
         const updated = await appsApi.update(session.accessToken, storeId, app.id, {
           name: config.name,
           config: appConfig,
         });
         setApp(updated);
       } else {
-        // Create new app
         const newApp = await appsApi.create(session.accessToken, storeId, config.name);
-        // Then update with full config
         const updated = await appsApi.update(session.accessToken, storeId, newApp.id, {
           config: appConfig,
         });
         setApp(updated);
       }
 
-      // Show success or redirect
       router.push(`/stores/${storeId}/app-builder/preview`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar aplicativo');
@@ -246,12 +275,47 @@ export default function AppBuilderPage() {
     );
   }
 
+  // Not connected - show connection required screen
+  if (!integrationStatus?.connected) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
+        <div className="max-w-lg text-center">
+          <div className="w-20 h-20 bg-yellow-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="text-yellow-500" size={40} />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">
+            Conecte sua loja primeiro
+          </h1>
+          <p className="text-gray-400 mb-6">
+            Para criar o aplicativo, precisamos acessar os dados da sua loja
+            (produtos, logo, categorias). Conecte sua plataforma de e-commerce para continuar.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => router.push(`/stores/${storeId}/settings`)}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+              <Link size={20} />
+              Conectar {currentStore?.platform === 'shopify' ? 'Shopify' : 'Loja'}
+            </button>
+            <button
+              onClick={() => router.back()}
+              className="px-6 py-3 text-gray-400 hover:text-white transition-colors"
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Header with Steps */}
       <div className="border-b border-gray-800 bg-gray-900/50">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-center gap-8">
+          <div className="flex items-center justify-center gap-4 overflow-x-auto">
             {steps.map((s, index) => (
               <div key={s.id} className="flex items-center">
                 <button
@@ -271,11 +335,11 @@ export default function AppBuilderPage() {
                   >
                     {step > s.id ? <Check size={20} /> : <s.icon size={20} />}
                   </div>
-                  <span className="text-sm font-medium">{s.name}</span>
+                  <span className="text-xs font-medium whitespace-nowrap">{s.name}</span>
                 </button>
                 {index < steps.length - 1 && (
                   <div
-                    className={`w-24 h-0.5 mx-4 ${
+                    className={`w-12 h-0.5 mx-2 ${
                       step > s.id ? 'bg-blue-600' : 'bg-gray-700'
                     }`}
                   />
@@ -291,6 +355,113 @@ export default function AppBuilderPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Side - Form */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Step 0: Onboarding - Your Store Preview */}
+            {step === 0 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Sua Loja</h2>
+                  <p className="text-gray-400 mt-1">
+                    Veja como sua loja está e como ficará no aplicativo
+                  </p>
+                </div>
+
+                {loadingPreview ? (
+                  <div className="flex items-center justify-center h-64">
+                    <Loader2 className="animate-spin text-blue-500" size={32} />
+                  </div>
+                ) : (
+                  <>
+                    {/* Store Info Card */}
+                    <div className="bg-gray-900 rounded-xl p-6">
+                      <div className="flex items-center gap-4 mb-6">
+                        {storePreview?.shop?.logo ? (
+                          <img
+                            src={storePreview.shop.logo}
+                            alt="Store Logo"
+                            className="w-16 h-16 rounded-xl object-contain bg-white p-2"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-gray-800 rounded-xl flex items-center justify-center">
+                            <Store className="text-gray-500" size={32} />
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="text-xl font-semibold text-white">
+                            {storePreview?.shop?.name || integrationStatus?.shopName || currentStore?.name}
+                          </h3>
+                          <p className="text-gray-400 text-sm">
+                            {storePreview?.shop?.domain || integrationStatus?.shopDomain}
+                          </p>
+                          <span className="inline-flex items-center gap-1 mt-1 text-green-400 text-xs">
+                            <Check size={12} />
+                            Conectado via {integrationStatus?.platform}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Products Preview */}
+                      {storePreview?.products && storePreview.products.length > 0 ? (
+                        <>
+                          <h4 className="text-sm font-medium text-gray-300 mb-3">
+                            Seus Produtos ({storePreview.products.length})
+                          </h4>
+                          <div className="grid grid-cols-4 gap-3">
+                            {storePreview.products.slice(0, 8).map((product) => (
+                              <div
+                                key={product.id}
+                                className="bg-gray-800 rounded-lg overflow-hidden"
+                              >
+                                {product.image ? (
+                                  <img
+                                    src={product.image}
+                                    alt={product.title}
+                                    className="w-full aspect-square object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full aspect-square bg-gray-700 flex items-center justify-center">
+                                    <ShoppingBag className="text-gray-500" size={24} />
+                                  </div>
+                                )}
+                                <div className="p-2">
+                                  <p className="text-white text-xs truncate">{product.title}</p>
+                                  <p className="text-gray-400 text-xs">
+                                    {product.currency} {product.price}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-center py-8 text-gray-500">
+                          <ShoppingBag className="mx-auto mb-2" size={32} />
+                          <p>Nenhum produto encontrado</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* App Preview Teaser */}
+                    <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-800/50 rounded-xl p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-blue-600/20 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Sparkles className="text-blue-400" size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-white font-semibold">
+                            Pronto para criar seu app!
+                          </h3>
+                          <p className="text-gray-300 text-sm mt-1">
+                            Seus produtos serão automaticamente sincronizados com o aplicativo.
+                            Escolha um template, personalize as cores e seu app estará pronto.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Step 1: Template Selection */}
             {step === 1 && (
               <div className="space-y-6">
@@ -635,9 +806,9 @@ export default function AppBuilderPage() {
             <div className="flex justify-between pt-6 border-t border-gray-800">
               <button
                 onClick={handleBack}
-                disabled={step === 1}
+                disabled={step === 0}
                 className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-                  step === 1
+                  step === 0
                     ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                     : 'bg-gray-800 text-white hover:bg-gray-700'
                 }`}
@@ -697,8 +868,8 @@ export default function AppBuilderPage() {
                       }`}>
                         <span>21:06</span>
                         <div className="flex items-center gap-1">
-                          <span>📶</span>
-                          <span>🔋</span>
+                          <span>5G</span>
+                          <span>100%</span>
                         </div>
                       </div>
 
@@ -714,18 +885,16 @@ export default function AppBuilderPage() {
                           />
                         ) : (
                           <span
-                            className={`font-semibold ${
-                              config.theme === 'dark' ? 'text-white' : 'text-gray-900'
-                            }`}
+                            className="font-semibold"
                             style={{ color: config.primaryColor }}
                           >
-                            {config.name || 'Minha Loja'}
+                            {config.name || storePreview?.shop?.name || 'Minha Loja'}
                           </span>
                         )}
                         <Search size={20} className={config.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} />
                       </div>
 
-                      {/* Content Preview */}
+                      {/* Content Preview with Real Products */}
                       <div className="p-4 space-y-3">
                         {/* Banner */}
                         <div
@@ -754,24 +923,45 @@ export default function AppBuilderPage() {
                           ))}
                         </div>
 
-                        {/* Products Grid */}
+                        {/* Products Grid - Use real products if available */}
                         <div className="grid grid-cols-2 gap-2">
-                          {[1, 2, 3, 4].map((i) => (
+                          {(storePreview?.products?.slice(0, 4) || [1, 2, 3, 4]).map((product, i) => (
                             <div
-                              key={i}
+                              key={typeof product === 'object' ? product.id : i}
                               className={`rounded-lg overflow-hidden ${
                                 config.theme === 'dark' ? 'bg-gray-800' : 'bg-gray-50'
                               }`}
                             >
-                              <div className="aspect-square bg-gray-300" />
-                              <div className="p-2">
-                                <div className={`h-2 w-16 rounded ${
-                                  config.theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
-                                }`} />
-                                <div
-                                  className="h-2 w-10 rounded mt-1"
-                                  style={{ backgroundColor: config.primaryColor, opacity: 0.7 }}
+                              {typeof product === 'object' && product.image ? (
+                                <img
+                                  src={product.image}
+                                  alt={product.title}
+                                  className="w-full aspect-square object-cover"
                                 />
+                              ) : (
+                                <div className="aspect-square bg-gray-300" />
+                              )}
+                              <div className="p-2">
+                                {typeof product === 'object' ? (
+                                  <>
+                                    <p className={`text-xs truncate ${config.theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                      {product.title}
+                                    </p>
+                                    <p className="text-xs" style={{ color: config.primaryColor }}>
+                                      {product.currency} {product.price}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className={`h-2 w-16 rounded ${
+                                      config.theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
+                                    }`} />
+                                    <div
+                                      className="h-2 w-10 rounded mt-1"
+                                      style={{ backgroundColor: config.primaryColor, opacity: 0.7 }}
+                                    />
+                                  </>
+                                )}
                               </div>
                             </div>
                           ))}

@@ -187,4 +187,21 @@ export class AppsController {
 
     return this.appsService.checkBuildReadiness(id, platform);
   }
+
+  /**
+   * Get store integration status for App Builder
+   * GET /v1/apps/integration-status?store_id=xxx
+   */
+  @Get('integration-status')
+  async getIntegrationStatus(
+    @Query('store_id') queryStoreId: string,
+    @Headers('x-store-id') headerStoreId: string,
+    @CurrentUser() user: UserContext,
+  ) {
+    const storeId = queryStoreId || headerStoreId;
+    if (!storeId) {
+      throw new BadRequestException('store_id is required');
+    }
+    return this.appsService.getIntegrationStatus(storeId, user.userId);
+  }
 }

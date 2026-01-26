@@ -877,6 +877,60 @@ export const appsApi = {
       headers: { Authorization: `Bearer ${token}` },
       storeId,
     }),
+
+  getIntegrationStatus: (token: string, storeId: string) =>
+    request<{
+      connected: boolean;
+      platform?: string;
+      shopDomain?: string;
+      shopName?: string;
+    }>(`/apps/integration-status?store_id=${storeId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+};
+
+// ============================================================================
+// Integrations API
+// ============================================================================
+
+export interface StorePreview {
+  connected: boolean;
+  shop?: {
+    name: string;
+    domain: string;
+    logo?: string;
+    currency: string;
+  };
+  products: Array<{
+    id: string;
+    title: string;
+    image?: string;
+    price: string;
+    currency: string;
+  }>;
+}
+
+export const integrationsApi = {
+  getShopifyPreview: (token: string, storeId: string) =>
+    request<StorePreview>('/integrations/shopify/preview', {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
+
+  getShopifyStatus: (token: string, storeId: string) =>
+    request<{
+      id: string;
+      platform: string;
+      status: string;
+      shop_domain?: string;
+      scopes: string[];
+      last_sync_at?: string;
+      created_at: string;
+    } | null>('/integrations/shopify/status', {
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+    }),
 };
 
 // ============================================================================
