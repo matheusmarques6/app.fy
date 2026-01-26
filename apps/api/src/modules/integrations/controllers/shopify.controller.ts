@@ -136,28 +136,29 @@ export class ShopifyController {
   }
 
   /**
-   * Connect Shopify manually with access token
+   * Connect Shopify using Client Credentials (new Shopify Dev Dashboard method)
    * POST /v1/integrations/shopify/connect-manual
    */
   @Post('connect-manual')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async connectManual(
-    @Body() body: { shop_domain: string; access_token: string },
+    @Body() body: { shop_domain: string; client_id: string; client_secret: string },
     @Headers('x-store-id') storeId: string,
   ): Promise<{ success: boolean; integration_id: string }> {
     if (!storeId) {
       throw new BadRequestException('X-Store-Id header is required');
     }
 
-    if (!body.shop_domain || !body.access_token) {
-      throw new BadRequestException('shop_domain and access_token are required');
+    if (!body.shop_domain || !body.client_id || !body.client_secret) {
+      throw new BadRequestException('shop_domain, client_id and client_secret are required');
     }
 
     const result = await this.shopifyService.connectManual(
       storeId,
       body.shop_domain,
-      body.access_token,
+      body.client_id,
+      body.client_secret,
     );
 
     return { success: true, integration_id: result.integrationId };

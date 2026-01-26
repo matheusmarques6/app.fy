@@ -48,7 +48,8 @@ export default function SettingsPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [showShopifyModal, setShowShopifyModal] = useState(false);
   const [shopDomain, setShopDomain] = useState('');
-  const [accessToken, setAccessToken] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,18 +91,19 @@ export default function SettingsPage() {
   }, [session?.accessToken, storeId, activeTab]);
 
   const handleConnectShopify = async () => {
-    if (!session?.accessToken || !storeId || !shopDomain || !accessToken) return;
+    if (!session?.accessToken || !storeId || !shopDomain || !clientId || !clientSecret) return;
 
     setConnecting(true);
     setError(null);
 
     try {
-      // Connect manually with access token
+      // Connect using client credentials
       await integrationsApi.connectShopifyManual(
         session.accessToken,
         storeId,
         shopDomain,
-        accessToken,
+        clientId,
+        clientSecret,
       );
 
       // Success - close modal and redirect to App Builder
@@ -109,7 +111,7 @@ export default function SettingsPage() {
       setSuccess('Shopify conectado com sucesso!');
       router.push(`/stores/${storeId}/app-builder`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao conectar com Shopify. Verifique o domínio e token.');
+      setError(err instanceof Error ? err.message : 'Falha ao conectar com Shopify. Verifique as credenciais.');
       setConnecting(false);
     }
   };
@@ -364,7 +366,8 @@ export default function SettingsPage() {
                   setShowShopifyModal(false);
                   setError(null);
                   setShopDomain('');
-                  setAccessToken('');
+                  setClientId('');
+                  setClientSecret('');
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -390,20 +393,34 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Access Token */}
+              {/* Client ID */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Access Token
+                  Client ID (API Key)
+                </label>
+                <input
+                  type="text"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
+                />
+              </div>
+
+              {/* Client Secret */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Client Secret (API Secret Key)
                 </label>
                 <input
                   type="password"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder="shpat_xxxxxxxxxxxxx"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Encontre em: Shopify Admin → Settings → Apps → Develop apps → Create app → Admin API access token
+                  Encontre em: Shopify Dev Dashboard → Apps → Seu App → Client credentials
                 </p>
               </div>
 
@@ -420,7 +437,8 @@ export default function SettingsPage() {
                   setShowShopifyModal(false);
                   setError(null);
                   setShopDomain('');
-                  setAccessToken('');
+                  setClientId('');
+                  setClientSecret('');
                 }}
                 className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
               >
@@ -428,7 +446,7 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={handleConnectShopify}
-                disabled={connecting || !shopDomain || !accessToken}
+                disabled={connecting || !shopDomain || !clientId || !clientSecret}
                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-blue-800 disabled:cursor-not-allowed"
               >
                 {connecting ? (

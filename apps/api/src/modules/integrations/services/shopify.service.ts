@@ -190,16 +190,30 @@ export class ShopifyService {
   }
 
   /**
-   * Connect Shopify store manually with access token
-   * Used when customer has their own Shopify app/token
+   * Connect Shopify using Client Credentials (new Shopify Dev Dashboard method)
+   * Takes Client ID and Client Secret, generates access token via Client Credentials Grant
    */
   async connectManual(
     storeId: string,
     shopDomain: string,
-    accessToken: string,
+    clientId: string,
+    clientSecret: string,
   ): Promise<{ integrationId: string }> {
     // Normalize shop domain
     const shop = this.normalizeShopDomain(shopDomain);
+
+    // Generate access token using client credentials grant
+    let accessToken: string;
+    try {
+      this.logger.log(`Generating access token for shop: ${shop} using client credentials`);
+      accessToken = await this.getAccessTokenFromCredentials(shop, clientId, clientSecret);
+      this.logger.log(`Access token generated successfully`);
+    } catch (error: any) {
+      this.logger.error(`Failed to generate access token for shop ${shop}: ${error?.message || error}`);
+      throw new BadRequestException(
+        'Credenciais inválidas. Verifique se o Client ID e Client Secret estão corretos e se o app está instalado na loja.',
+      );
+    }
 
     // Verify the token works by fetching shop info
     let shopInfo: any;
@@ -213,12 +227,12 @@ export class ShopifyService {
       // Check for common issues
       if (error?.message?.includes('401')) {
         throw new BadRequestException(
-          'Token inválido ou expirado. Gere um novo token no Shopify Admin.',
+          'Token gerado mas inválido. Verifique as permissões do app no Shopify.',
         );
       }
       if (error?.message?.includes('403')) {
         throw new BadRequestException(
-          'Token não tem permissões suficientes. Certifique-se de que o app tem acesso a "read_products" e "read_themes".',
+          'Token não tem permissões suficientes. Certifique-se de que o app tem acesso a "read_products".',
         );
       }
       if (error?.message?.includes('404')) {
@@ -228,7 +242,7 @@ export class ShopifyService {
       }
 
       throw new BadRequestException(
-        'Token inválido. Verifique se o Access Token está correto e tem as permissões necessárias.',
+        'Erro ao validar conexão. Verifique as credenciais e permissões do app.',
       );
     }
 
@@ -302,6 +316,39 @@ export class ShopifyService {
       const error = await response.text();
       this.logger.error(`Failed to exchange code: ${error}`);
       throw new BadRequestException('Failed to complete Shopify authorization');
+    }
+
+    const data = await response.json() as { access_token: string };
+    return data.access_token;
+  }
+
+  /**
+   * Get access token using Client Credentials Grant (new Shopify Dev Dashboard method)
+   * https://shopify.dev/docs/apps/build/authentication-authorization/client-credentials
+   */
+  private async getAccessTokenFromCredentials(
+    shop: string,
+    clientId: string,
+    clientSecret: string,
+  ): Promise<string> {
+    // Create Basic Auth header from client credentials
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+    const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+      }).toString(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`Failed to get access token via client credentials: ${response.status} - ${errorText}`);
+      throw new Error(`Failed to get access token: ${response.status}`);
     }
 
     const data = await response.json() as { access_token: string };

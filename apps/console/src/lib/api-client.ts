@@ -947,13 +947,13 @@ export const integrationsApi = {
       storeId,
     }),
 
-  // Connect manually with access token (no OAuth needed)
-  connectShopifyManual: (token: string, storeId: string, shopDomain: string, shopifyAccessToken: string) =>
+  // Connect using Client Credentials (new Shopify Dev Dashboard method)
+  connectShopifyManual: (token: string, storeId: string, shopDomain: string, clientId: string, clientSecret: string) =>
     request<{ success: boolean; integration_id: string }>('/integrations/shopify/connect-manual', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       storeId,
-      body: JSON.stringify({ shop_domain: shopDomain, access_token: shopifyAccessToken }),
+      body: JSON.stringify({ shop_domain: shopDomain, client_id: clientId, client_secret: clientSecret }),
     }),
 
   disconnectShopify: (token: string, storeId: string) =>
