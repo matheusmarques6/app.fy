@@ -947,13 +947,13 @@ export const integrationsApi = {
       storeId,
     }),
 
-  // OAuth flow - returns install URL to redirect user
-  initiateShopifyOAuth: (token: string, storeId: string, shopDomain: string) =>
-    request<{ install_url: string; state: string }>('/integrations/shopify/install', {
+  // Connect manually with access token (no OAuth needed)
+  connectShopifyManual: (token: string, storeId: string, shopDomain: string, shopifyAccessToken: string) =>
+    request<{ success: boolean; integration_id: string }>('/integrations/shopify/connect-manual', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       storeId,
-      body: JSON.stringify({ shop: shopDomain }),
+      body: JSON.stringify({ shop_domain: shopDomain, access_token: shopifyAccessToken }),
     }),
 
   disconnectShopify: (token: string, storeId: string) =>

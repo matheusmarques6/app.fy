@@ -14,7 +14,6 @@ import {
   Check,
   X,
   Loader2,
-  ExternalLink,
   AlertCircle,
   Store,
 } from 'lucide-react';
@@ -49,6 +48,7 @@ export default function SettingsPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [showShopifyModal, setShowShopifyModal] = useState(false);
   const [shopDomain, setShopDomain] = useState('');
+  const [accessToken, setAccessToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,73 +89,27 @@ export default function SettingsPage() {
     }
   }, [session?.accessToken, storeId, activeTab]);
 
-  // Listen for OAuth popup messages
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Verify origin
-      if (event.origin !== window.location.origin) return;
-
-      if (event.data?.type === 'shopify-oauth-success') {
-        // OAuth succeeded - close modal and redirect to App Builder
-        setShowShopifyModal(false);
-        setConnecting(false);
-        router.push(`/stores/${storeId}/app-builder`);
-      } else if (event.data?.type === 'shopify-oauth-error') {
-        // OAuth failed - show error
-        setError('Falha na conexão OAuth com Shopify. Tente novamente.');
-        setConnecting(false);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [storeId, router]);
-
   const handleConnectShopify = async () => {
-    if (!session?.accessToken || !storeId || !shopDomain) return;
+    if (!session?.accessToken || !storeId || !shopDomain || !accessToken) return;
 
     setConnecting(true);
     setError(null);
 
     try {
-      // Initiate OAuth flow - get install URL from API
-      const result = await integrationsApi.initiateShopifyOAuth(
+      // Connect manually with access token
+      await integrationsApi.connectShopifyManual(
         session.accessToken,
         storeId,
         shopDomain,
+        accessToken,
       );
 
-      // Open OAuth in popup window
-      const popupWidth = 600;
-      const popupHeight = 700;
-      const left = window.screenX + (window.outerWidth - popupWidth) / 2;
-      const top = window.screenY + (window.outerHeight - popupHeight) / 2;
-
-      const popup = window.open(
-        result.install_url,
-        'shopify-oauth',
-        `width=${popupWidth},height=${popupHeight},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-      );
-
-      // Check if popup was blocked
-      if (!popup || popup.closed) {
-        setError('Popup bloqueado. Permita popups para este site e tente novamente.');
-        setConnecting(false);
-        return;
-      }
-
-      // Monitor popup close (in case user closes it manually)
-      const checkPopupClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkPopupClosed);
-          // Give some time for the message to arrive
-          setTimeout(() => {
-            setConnecting(false);
-          }, 500);
-        }
-      }, 500);
+      // Success - close modal and redirect to App Builder
+      setShowShopifyModal(false);
+      setSuccess('Shopify conectado com sucesso!');
+      router.push(`/stores/${storeId}/app-builder`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao iniciar conexão com Shopify');
+      setError(err instanceof Error ? err.message : 'Falha ao conectar com Shopify. Verifique o domínio e token.');
       setConnecting(false);
     }
   };
@@ -409,6 +363,8 @@ export default function SettingsPage() {
                 onClick={() => {
                   setShowShopifyModal(false);
                   setError(null);
+                  setShopDomain('');
+                  setAccessToken('');
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -434,6 +390,23 @@ export default function SettingsPage() {
                 </p>
               </div>
 
+              {/* Access Token */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Access Token
+                </label>
+                <input
+                  type="password"
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  placeholder="shpat_xxxxxxxxxxxxx"
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Encontre em: Shopify Admin → Settings → Apps → Develop apps → Create app → Admin API access token
+                </p>
+              </div>
+
               {error && (
                 <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
                   {error}
@@ -446,6 +419,8 @@ export default function SettingsPage() {
                 onClick={() => {
                   setShowShopifyModal(false);
                   setError(null);
+                  setShopDomain('');
+                  setAccessToken('');
                 }}
                 className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
               >
@@ -453,7 +428,7 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={handleConnectShopify}
-                disabled={connecting || !shopDomain}
+                disabled={connecting || !shopDomain || !accessToken}
                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-blue-800 disabled:cursor-not-allowed"
               >
                 {connecting ? (
@@ -463,8 +438,8 @@ export default function SettingsPage() {
                   </>
                 ) : (
                   <>
-                    <ExternalLink size={18} />
-                    Conectar com Shopify
+                    <Check size={18} />
+                    Conectar
                   </>
                 )}
               </button>
