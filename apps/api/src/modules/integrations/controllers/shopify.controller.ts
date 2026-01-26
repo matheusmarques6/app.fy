@@ -69,6 +69,11 @@ export class ShopifyController {
       throw new BadRequestException('X-Store-Id header is required');
     }
 
+    // Debug logging - what arrived from frontend?
+    this.logger.debug(`[saveCredentials] Received api_key length: ${dto.api_key?.length}`);
+    this.logger.debug(`[saveCredentials] Received api_key preview: ${dto.api_key?.substring(0, 32)}...`);
+    this.logger.debug(`[saveCredentials] Received api_secret length: ${dto.api_secret?.length}`);
+
     await this.shopifyService.saveCredentials(storeId, dto.api_key, dto.api_secret);
     return { success: true };
   }
