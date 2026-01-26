@@ -204,9 +204,29 @@ export class ShopifyService {
     // Verify the token works by fetching shop info
     let shopInfo: any;
     try {
+      this.logger.log(`Verifying token for shop: ${shop}`);
       shopInfo = await this.getShopInfo(shop, accessToken);
-    } catch (error) {
-      this.logger.error(`Invalid Shopify token: ${error}`);
+      this.logger.log(`Shop info retrieved: ${shopInfo?.name}`);
+    } catch (error: any) {
+      this.logger.error(`Invalid Shopify token for shop ${shop}: ${error?.message || error}`);
+
+      // Check for common issues
+      if (error?.message?.includes('401')) {
+        throw new BadRequestException(
+          'Token inválido ou expirado. Gere um novo token no Shopify Admin.',
+        );
+      }
+      if (error?.message?.includes('403')) {
+        throw new BadRequestException(
+          'Token não tem permissões suficientes. Certifique-se de que o app tem acesso a "read_products" e "read_themes".',
+        );
+      }
+      if (error?.message?.includes('404')) {
+        throw new BadRequestException(
+          'Loja não encontrada. Verifique se o domínio está correto.',
+        );
+      }
+
       throw new BadRequestException(
         'Token inválido. Verifique se o Access Token está correto e tem as permissões necessárias.',
       );
@@ -729,9 +749,9 @@ export class ShopifyService {
     }
 
     if (!response.ok) {
-      const error = await response.text();
-      this.logger.error(`Shopify API error: ${response.status} ${error}`);
-      throw new Error(`Shopify API error: ${response.status}`);
+      const errorText = await response.text();
+      this.logger.error(`Shopify API error: ${response.status} - ${errorText}`);
+      throw new Error(`Shopify API error: ${response.status} - ${errorText}`);
     }
 
     return response.json();
