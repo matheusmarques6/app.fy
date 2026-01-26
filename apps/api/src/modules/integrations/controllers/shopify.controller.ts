@@ -127,16 +127,30 @@ export class ShopifyController {
     @Query() dto: ShopifyOAuthCallbackDto,
     @Res() res: Response,
   ): Promise<void> {
+    const consoleUrl = this.config.get<string>('CONSOLE_BASE_URL');
+
+    // Decode state to get storeId for redirect
+    let storeId: string | null = null;
+    try {
+      const decoded = JSON.parse(Buffer.from(dto.state, 'base64').toString());
+      storeId = decoded.storeId;
+    } catch {
+      // State decode failed, will handle in error redirect
+    }
+
     try {
       const { integrationId } = await this.shopifyService.handleOAuthCallback(dto);
 
-      // Redirect to console with success
-      const consoleUrl = this.config.get<string>('CONSOLE_BASE_URL');
-      res.redirect(`${consoleUrl}/settings/integrations?success=shopify&id=${integrationId}`);
+      // Redirect to validation page
+      res.redirect(
+        `${consoleUrl}/integrations/shopify/callback?success=shopify&id=${integrationId}&store_id=${storeId}`,
+      );
     } catch (error) {
       this.logger.error('OAuth callback failed', error);
-      const consoleUrl = this.config.get<string>('CONSOLE_BASE_URL');
-      res.redirect(`${consoleUrl}/settings/integrations?error=shopify_failed`);
+      const errorRedirect = storeId
+        ? `${consoleUrl}/integrations/shopify/callback?error=shopify_failed&store_id=${storeId}`
+        : `${consoleUrl}/integrations/shopify/callback?error=shopify_failed`;
+      res.redirect(errorRedirect);
     }
   }
 
