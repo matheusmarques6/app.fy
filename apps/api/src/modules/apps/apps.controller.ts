@@ -70,6 +70,24 @@ export class AppsController {
   }
 
   /**
+   * Get store integration status for App Builder
+   * GET /v1/apps/integration-status?store_id=xxx
+   * NOTE: This route MUST be defined BEFORE :id routes to avoid conflicts
+   */
+  @Get('integration-status')
+  async getIntegrationStatus(
+    @Query('store_id') queryStoreId: string,
+    @Headers('x-store-id') headerStoreId: string,
+    @CurrentUser() user: UserContext,
+  ) {
+    const storeId = queryStoreId || headerStoreId;
+    if (!storeId) {
+      throw new BadRequestException('store_id is required');
+    }
+    return this.appsService.getIntegrationStatus(storeId, user.userId);
+  }
+
+  /**
    * Get app by ID
    * GET /v1/apps/:id
    */
@@ -186,22 +204,5 @@ export class AppsController {
     await this.appsService.findById(id, user.userId);
 
     return this.appsService.checkBuildReadiness(id, platform);
-  }
-
-  /**
-   * Get store integration status for App Builder
-   * GET /v1/apps/integration-status?store_id=xxx
-   */
-  @Get('integration-status')
-  async getIntegrationStatus(
-    @Query('store_id') queryStoreId: string,
-    @Headers('x-store-id') headerStoreId: string,
-    @CurrentUser() user: UserContext,
-  ) {
-    const storeId = queryStoreId || headerStoreId;
-    if (!storeId) {
-      throw new BadRequestException('store_id is required');
-    }
-    return this.appsService.getIntegrationStatus(storeId, user.userId);
   }
 }
