@@ -47,7 +47,6 @@ export default function SettingsPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [showShopifyModal, setShowShopifyModal] = useState(false);
   const [shopDomain, setShopDomain] = useState('');
-  const [accessToken, setAccessToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,24 +94,17 @@ export default function SettingsPage() {
     setError(null);
 
     try {
-      await integrationsApi.connectShopifyManual(
+      // Initiate OAuth flow - get install URL from API
+      const result = await integrationsApi.initiateShopifyOAuth(
         session.accessToken,
         storeId,
         shopDomain,
-        accessToken,
       );
 
-      setSuccess('Shopify conectado com sucesso!');
-      setShowShopifyModal(false);
-      setShopDomain('');
-      setAccessToken('');
-
-      // Reload status
-      const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
-      setShopifyStatus(status);
+      // Redirect to Shopify for authorization
+      window.location.href = result.install_url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao conectar Shopify');
-    } finally {
+      setError(err instanceof Error ? err.message : 'Falha ao iniciar conexão com Shopify');
       setConnecting(false);
     }
   };
@@ -371,70 +363,29 @@ export default function SettingsPage() {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Instructions */}
+              {/* Info */}
               <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
-                <h3 className="text-blue-300 font-medium mb-2">Como obter o Access Token:</h3>
-                <ol className="text-sm text-blue-200/80 space-y-2 list-decimal list-inside">
-                  <li>Acesse o admin da sua loja Shopify</li>
-                  <li>Vá em <strong>Configurações → Apps e canais de vendas</strong></li>
-                  <li>Clique em <strong>Desenvolver apps</strong></li>
-                  <li>Clique em <strong>Criar um app</strong> e dê um nome (ex: &quot;AppFy&quot;)</li>
-                  <li>
-                    Em <strong>Configurar escopos da API Admin</strong>, ative:
-                    <ul className="ml-4 mt-1 text-xs text-blue-200/60">
-                      <li>• read_products</li>
-                      <li>• read_orders</li>
-                      <li>• read_customers</li>
-                      <li>• read_inventory</li>
-                    </ul>
-                  </li>
-                  <li>Clique em <strong>Instalar app</strong></li>
-                  <li>Copie o <strong>Admin API access token</strong></li>
-                </ol>
-                <a
-                  href="https://help.shopify.com/pt-BR/manual/apps/app-types/custom-apps"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-blue-400 text-sm mt-3 hover:underline"
-                >
-                  Ver documentação completa
-                  <ExternalLink size={14} />
-                </a>
+                <p className="text-blue-200 text-sm">
+                  Digite o domínio da sua loja Shopify. Você será redirecionado para o Shopify
+                  para autorizar o acesso aos dados da loja (produtos, pedidos, clientes).
+                </p>
               </div>
 
               {/* Form */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Domínio da Loja
-                  </label>
-                  <input
-                    type="text"
-                    value={shopDomain}
-                    onChange={(e) => setShopDomain(e.target.value)}
-                    placeholder="minha-loja.myshopify.com"
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    O domínio .myshopify.com da sua loja
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Admin API Access Token
-                  </label>
-                  <input
-                    type="password"
-                    value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
-                    placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    O token começa com &quot;shpat_&quot;
-                  </p>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Domínio da Loja
+                </label>
+                <input
+                  type="text"
+                  value={shopDomain}
+                  onChange={(e) => setShopDomain(e.target.value)}
+                  placeholder="minha-loja.myshopify.com"
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  O domínio .myshopify.com da sua loja
+                </p>
               </div>
 
               {error && (
@@ -453,18 +404,18 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={handleConnectShopify}
-                disabled={connecting || !shopDomain || !accessToken}
+                disabled={connecting || !shopDomain}
                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-blue-800 disabled:cursor-not-allowed"
               >
                 {connecting ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Conectando...
+                    Redirecionando...
                   </>
                 ) : (
                   <>
-                    <Check size={18} />
-                    Conectar
+                    <ExternalLink size={18} />
+                    Conectar com Shopify
                   </>
                 )}
               </button>

@@ -932,12 +932,13 @@ export const integrationsApi = {
       storeId,
     }),
 
-  connectShopifyManual: (token: string, storeId: string, shopDomain: string, accessToken: string) =>
-    request<{ success: boolean; integration_id: string }>('/integrations/shopify/connect-manual', {
+  // OAuth flow - returns install URL to redirect user
+  initiateShopifyOAuth: (token: string, storeId: string, shopDomain: string) =>
+    request<{ install_url: string; state: string }>('/integrations/shopify/install', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       storeId,
-      body: JSON.stringify({ shop_domain: shopDomain, access_token: accessToken }),
+      body: JSON.stringify({ shop: shopDomain }),
     }),
 
   disconnectShopify: (token: string, storeId: string) =>
