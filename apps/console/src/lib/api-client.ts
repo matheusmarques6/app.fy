@@ -962,6 +962,15 @@ export const integrationsApi = {
       headers: { Authorization: `Bearer ${token}` },
       storeId,
     }),
+
+  // Start OAuth flow (returns URL to redirect user to Shopify)
+  startShopifyInstall: (token: string, storeId: string, shop: string) =>
+    request<{ install_url: string; state: string }>('/integrations/shopify/install', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify({ shop }),
+    }),
 };
 
 // ============================================================================

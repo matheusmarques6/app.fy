@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAppStore } from '../../../../../lib/store';
 import { integrationsApi } from '../../../../../lib/api-client';
@@ -35,7 +35,6 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const params = useParams();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const storeId = params.storeId as string;
   const { currentStore } = useAppStore();
 
@@ -48,8 +47,6 @@ export default function SettingsPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [showShopifyModal, setShowShopifyModal] = useState(false);
   const [shopDomain, setShopDomain] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,28 +87,62 @@ export default function SettingsPage() {
     }
   }, [session?.accessToken, storeId, activeTab]);
 
+  // Listen for OAuth callback success from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === 'shopify-oauth-success') {
+        setShowShopifyModal(false);
+        setConnecting(false);
+        setSuccess('Shopify conectado com sucesso!');
+        // Reload status to reflect new connection
+        const loadStatus = async () => {
+          if (session?.accessToken) {
+            const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
+            setShopifyStatus(status);
+          }
+        };
+        loadStatus();
+      } else if (event.data?.type === 'shopify-oauth-error') {
+        setConnecting(false);
+        setError('Falha ao conectar com Shopify. Tente novamente.');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [session?.accessToken, storeId]);
+
   const handleConnectShopify = async () => {
-    if (!session?.accessToken || !storeId || !shopDomain || !clientId || !clientSecret) return;
+    if (!session?.accessToken || !storeId || !shopDomain) return;
 
     setConnecting(true);
     setError(null);
 
     try {
-      // Connect using client credentials
-      await integrationsApi.connectShopifyManual(
+      // Get OAuth install URL from API
+      const { install_url } = await integrationsApi.startShopifyInstall(
         session.accessToken,
         storeId,
         shopDomain,
-        clientId,
-        clientSecret,
       );
 
-      // Success - close modal and redirect to App Builder
-      setShowShopifyModal(false);
-      setSuccess('Shopify conectado com sucesso!');
-      router.push(`/stores/${storeId}/app-builder`);
+      // Open OAuth popup
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.innerWidth - width) / 2;
+      const top = window.screenY + (window.innerHeight - height) / 2;
+
+      window.open(
+        install_url,
+        'shopify-oauth',
+        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+      );
+
+      // Keep connecting state true - will be reset by message listener
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao conectar com Shopify. Verifique as credenciais.');
+      setError(err instanceof Error ? err.message : 'Falha ao iniciar conexão com Shopify.');
       setConnecting(false);
     }
   };
@@ -366,8 +397,6 @@ export default function SettingsPage() {
                   setShowShopifyModal(false);
                   setError(null);
                   setShopDomain('');
-                  setClientId('');
-                  setClientSecret('');
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -376,6 +405,10 @@ export default function SettingsPage() {
             </div>
 
             <div className="p-6 space-y-6">
+              <p className="text-gray-400 text-sm">
+                Digite o domínio da sua loja Shopify e clique em conectar. Você será redirecionado para autorizar o acesso.
+              </p>
+
               {/* Store Domain */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -393,37 +426,6 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Client ID */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Client ID (API Key)
-                </label>
-                <input
-                  type="text"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
-                />
-              </div>
-
-              {/* Client Secret */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Client Secret (API Secret Key)
-                </label>
-                <input
-                  type="password"
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Encontre em: Shopify Dev Dashboard → Apps → Seu App → Client credentials
-                </p>
-              </div>
-
               {error && (
                 <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
                   {error}
@@ -437,8 +439,6 @@ export default function SettingsPage() {
                   setShowShopifyModal(false);
                   setError(null);
                   setShopDomain('');
-                  setClientId('');
-                  setClientSecret('');
                 }}
                 className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
               >
@@ -446,18 +446,18 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={handleConnectShopify}
-                disabled={connecting || !shopDomain || !clientId || !clientSecret}
+                disabled={connecting || !shopDomain}
                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-blue-800 disabled:cursor-not-allowed"
               >
                 {connecting ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Conectando...
+                    Aguardando autorização...
                   </>
                 ) : (
                   <>
-                    <Check size={18} />
-                    Conectar
+                    <Store size={18} />
+                    Conectar com Shopify
                   </>
                 )}
               </button>
