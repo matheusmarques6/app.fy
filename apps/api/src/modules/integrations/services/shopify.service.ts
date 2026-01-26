@@ -878,6 +878,8 @@ export class ShopifyService {
    * Format: iv:authTag:encryptedData (all base64)
    */
   private encryptToken(token: string): string {
+    this.logger.debug(`[encryptToken] Input length: ${token.length}`);
+
     const iv = randomBytes(16);
     const cipher = createCipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
 
@@ -886,7 +888,11 @@ export class ShopifyService {
 
     const authTag = cipher.getAuthTag();
 
-    return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+    const result = `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+    this.logger.debug(`[encryptToken] Output: ${result}`);
+    this.logger.debug(`[encryptToken] Output length: ${result.length}, has 2 colons: ${(result.match(/:/g) || []).length === 2}`);
+
+    return result;
   }
 
   /**
@@ -895,12 +901,19 @@ export class ShopifyService {
   private decryptToken(encrypted: string): string {
     const parts = encrypted.split(':');
 
+    this.logger.debug(`[decryptToken] Parts count: ${parts.length}`);
+
     // Fallback for legacy base64-only tokens
     if (parts.length === 1) {
-      return Buffer.from(encrypted, 'base64').toString();
+      this.logger.debug(`[decryptToken] Using legacy base64 fallback`);
+      const decoded = Buffer.from(encrypted, 'base64').toString();
+      this.logger.debug(`[decryptToken] Decoded legacy value length: ${decoded.length}`);
+      return decoded;
     }
 
     const [ivB64, authTagB64, data] = parts;
+    this.logger.debug(`[decryptToken] IV length: ${ivB64.length}, AuthTag length: ${authTagB64.length}, Data length: ${data.length}`);
+
     const iv = Buffer.from(ivB64, 'base64');
     const authTag = Buffer.from(authTagB64, 'base64');
 
@@ -909,6 +922,8 @@ export class ShopifyService {
 
     let decrypted = decipher.update(data, 'base64', 'utf8');
     decrypted += decipher.final('utf8');
+
+    this.logger.debug(`[decryptToken] Decrypted length: ${decrypted.length}`);
 
     return decrypted;
   }
@@ -963,12 +978,23 @@ export class ShopifyService {
       throw new BadRequestException('Store not found');
     }
 
+    // Debug logging
+    this.logger.debug(`[saveCredentials] Input apiKey length: ${apiKey.length}`);
+    this.logger.debug(`[saveCredentials] Input apiKey preview: ${apiKey.substring(0, 8)}...`);
+
     const settings = (store.settings as Record<string, any>) || {};
+
+    const encryptedApiKey = this.encryptToken(apiKey);
+    const encryptedApiSecret = this.encryptToken(apiSecret);
+
+    this.logger.debug(`[saveCredentials] Encrypted apiKey: ${encryptedApiKey}`);
+    this.logger.debug(`[saveCredentials] Encrypted apiKey length: ${encryptedApiKey.length}`);
+    this.logger.debug(`[saveCredentials] Contains colons: ${encryptedApiKey.includes(':')}`);
 
     // Store encrypted credentials
     settings.shopify_credentials = {
-      api_key: this.encryptToken(apiKey),
-      api_secret: this.encryptToken(apiSecret),
+      api_key: encryptedApiKey,
+      api_secret: encryptedApiSecret,
       configured_at: new Date().toISOString(),
     };
 
@@ -1023,9 +1049,20 @@ export class ShopifyService {
       return null;
     }
 
+    // Debug logging
+    this.logger.debug(`[getStoreCredentials] Raw api_key from DB: ${shopifyCredentials.api_key}`);
+    this.logger.debug(`[getStoreCredentials] Raw api_key length: ${shopifyCredentials.api_key.length}`);
+    this.logger.debug(`[getStoreCredentials] Contains colons: ${shopifyCredentials.api_key.includes(':')}`);
+
+    const decryptedApiKey = this.decryptToken(shopifyCredentials.api_key);
+    const decryptedApiSecret = this.decryptToken(shopifyCredentials.api_secret);
+
+    this.logger.debug(`[getStoreCredentials] Decrypted api_key: ${decryptedApiKey.substring(0, 8)}...`);
+    this.logger.debug(`[getStoreCredentials] Decrypted api_key length: ${decryptedApiKey.length}`);
+
     return {
-      apiKey: this.decryptToken(shopifyCredentials.api_key),
-      apiSecret: this.decryptToken(shopifyCredentials.api_secret),
+      apiKey: decryptedApiKey,
+      apiSecret: decryptedApiSecret,
     };
   }
 }
