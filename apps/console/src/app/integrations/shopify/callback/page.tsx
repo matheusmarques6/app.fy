@@ -31,7 +31,6 @@ function ShopifyCallbackContent() {
   // Get params from URL
   const success = searchParams.get('success');
   const error = searchParams.get('error');
-  const integrationId = searchParams.get('id');
   const urlStoreId = searchParams.get('store_id');
 
   useEffect(() => {
@@ -109,23 +108,52 @@ function ShopifyCallbackContent() {
     runValidation();
   }, [sessionStatus, session?.accessToken, storeId, success, error]);
 
-  // Countdown and redirect on success
+  // On success: notify parent window and close popup (or redirect if not popup)
   useEffect(() => {
     if (overallStatus !== 'success' || !storeId) return;
 
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          router.push(`/stores/${storeId}/app-builder`);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    // Check if we're in a popup window
+    const isPopup = window.opener && window.opener !== window;
 
-    return () => clearInterval(timer);
+    if (isPopup) {
+      // Send success message to parent window
+      window.opener.postMessage(
+        { type: 'shopify-oauth-success', storeId },
+        window.location.origin
+      );
+      // Close popup after a short delay to show success state
+      const timer = setTimeout(() => {
+        window.close();
+      }, 1500);
+      return () => clearTimeout(timer);
+    } else {
+      // Fallback: redirect if not in popup
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            router.push(`/stores/${storeId}/app-builder`);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
   }, [overallStatus, storeId, router]);
+
+  // On error: notify parent window (but don't auto-close to let user see error)
+  useEffect(() => {
+    if (overallStatus !== 'error') return;
+
+    const isPopup = window.opener && window.opener !== window;
+    if (isPopup) {
+      window.opener.postMessage(
+        { type: 'shopify-oauth-error', storeId },
+        window.location.origin
+      );
+    }
+  }, [overallStatus, storeId]);
 
   const updateStep = (id: string, status: ValidationStep['status'], error?: string) => {
     setSteps((prev) =>
@@ -210,16 +238,24 @@ function ShopifyCallbackContent() {
         {/* Success State */}
         {overallStatus === 'success' && (
           <div className="text-center">
-            <p className="text-gray-400 mb-4">
-              Redirecionando para o App Builder em {countdown}s...
-            </p>
-            <button
-              onClick={() => router.push(`/stores/${storeId}/app-builder`)}
-              className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              Continuar para App Builder
-              <ArrowRight size={20} />
-            </button>
+            {window.opener && window.opener !== window ? (
+              <p className="text-gray-400 mb-4">
+                Fechando esta janela automaticamente...
+              </p>
+            ) : (
+              <>
+                <p className="text-gray-400 mb-4">
+                  Redirecionando para o App Builder em {countdown}s...
+                </p>
+                <button
+                  onClick={() => router.push(`/stores/${storeId}/app-builder`)}
+                  className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  Continuar para App Builder
+                  <ArrowRight size={20} />
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -230,12 +266,21 @@ function ShopifyCallbackContent() {
               Houve um problema ao conectar sua loja. Verifique as credenciais e tente novamente.
             </p>
             <div className="flex gap-3">
-              <button
-                onClick={() => router.push(`/stores/${storeId}/settings?tab=integrations`)}
-                className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-              >
-                Voltar
-              </button>
+              {window.opener && window.opener !== window ? (
+                <button
+                  onClick={() => window.close()}
+                  className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Fechar
+                </button>
+              ) : (
+                <button
+                  onClick={() => router.push(`/stores/${storeId}/settings?tab=integrations`)}
+                  className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Voltar
+                </button>
+              )}
               <button
                 onClick={() => window.location.reload()}
                 className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"

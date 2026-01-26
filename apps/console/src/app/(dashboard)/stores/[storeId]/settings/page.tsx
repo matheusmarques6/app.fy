@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAppStore } from '../../../../../lib/store';
 import { integrationsApi } from '../../../../../lib/api-client';
@@ -42,6 +42,7 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const storeId = params.storeId as string;
   const { currentStore } = useAppStore();
 
@@ -105,6 +106,28 @@ export default function SettingsPage() {
     }
   }, [session?.accessToken, storeId, activeTab]);
 
+  // Listen for OAuth popup messages
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === 'shopify-oauth-success') {
+        // OAuth succeeded - close modal and redirect to App Builder
+        setShowShopifyModal(false);
+        setConnecting(false);
+        router.push(`/stores/${storeId}/app-builder`);
+      } else if (event.data?.type === 'shopify-oauth-error') {
+        // OAuth failed - show error
+        setError('Falha na conexão OAuth com Shopify. Tente novamente.');
+        setConnecting(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [storeId, router]);
+
   const handleConnectShopify = async () => {
     if (!session?.accessToken || !storeId || !shopDomain) return;
 
@@ -130,8 +153,35 @@ export default function SettingsPage() {
         shopDomain,
       );
 
-      // Redirect to Shopify for authorization
-      window.location.href = result.install_url;
+      // Open OAuth in popup window
+      const popupWidth = 600;
+      const popupHeight = 700;
+      const left = window.screenX + (window.outerWidth - popupWidth) / 2;
+      const top = window.screenY + (window.outerHeight - popupHeight) / 2;
+
+      const popup = window.open(
+        result.install_url,
+        'shopify-oauth',
+        `width=${popupWidth},height=${popupHeight},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
+      );
+
+      // Check if popup was blocked
+      if (!popup || popup.closed) {
+        setError('Popup bloqueado. Permita popups para este site e tente novamente.');
+        setConnecting(false);
+        return;
+      }
+
+      // Monitor popup close (in case user closes it manually)
+      const checkPopupClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkPopupClosed);
+          // Give some time for the message to arrive
+          setTimeout(() => {
+            setConnecting(false);
+          }, 500);
+        }
+      }, 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao iniciar conexão com Shopify');
       setConnecting(false);
