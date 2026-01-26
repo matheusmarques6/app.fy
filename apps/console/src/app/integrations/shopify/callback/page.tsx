@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { integrationsApi } from '../../../../lib/api-client';
@@ -13,7 +13,7 @@ type ValidationStep = {
   error?: string;
 };
 
-export default function ShopifyCallbackPage() {
+function ShopifyCallbackContent() {
   const { data: session, status: sessionStatus } = useSession();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -247,5 +247,23 @@ export default function ShopifyCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// Loading fallback for Suspense
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <Loader2 className="animate-spin text-blue-500" size={48} />
+    </div>
+  );
+}
+
+// Wrap with Suspense for useSearchParams
+export default function ShopifyCallbackPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ShopifyCallbackContent />
+    </Suspense>
   );
 }
