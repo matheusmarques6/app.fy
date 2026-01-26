@@ -28,8 +28,6 @@ import {
   ShopifyOAuthCallbackDto,
   ShopifyInstallResponseDto,
   IntegrationResponseDto,
-  ShopifyCredentialsDto,
-  ShopifyCredentialsResponseDto,
 } from '../dto/shopify.dto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { QUEUE_NAMES } from '@appfy/shared';
@@ -49,50 +47,6 @@ export class ShopifyController {
     @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
     private readonly integrationsQueue: Queue,
   ) {}
-
-  // ==========================================================================
-  // Credentials Management (per-store Shopify App)
-  // ==========================================================================
-
-  /**
-   * Save Shopify App credentials for this store
-   * POST /v1/integrations/shopify/credentials
-   */
-  @Post('credentials')
-  @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.OK)
-  async saveCredentials(
-    @Body() dto: ShopifyCredentialsDto,
-    @Headers('x-store-id') storeId: string,
-  ): Promise<{ success: boolean }> {
-    if (!storeId) {
-      throw new BadRequestException('X-Store-Id header is required');
-    }
-
-    // Debug logging - what arrived from frontend?
-    this.logger.debug(`[saveCredentials] Received api_key length: ${dto.api_key?.length}`);
-    this.logger.debug(`[saveCredentials] Received api_key preview: ${dto.api_key?.substring(0, 32)}...`);
-    this.logger.debug(`[saveCredentials] Received api_secret length: ${dto.api_secret?.length}`);
-
-    await this.shopifyService.saveCredentials(storeId, dto.api_key, dto.api_secret);
-    return { success: true };
-  }
-
-  /**
-   * Get Shopify App credentials status for this store
-   * GET /v1/integrations/shopify/credentials
-   */
-  @Get('credentials')
-  @UseGuards(JwtAuthGuard)
-  async getCredentials(
-    @Headers('x-store-id') storeId: string,
-  ): Promise<ShopifyCredentialsResponseDto> {
-    if (!storeId) {
-      throw new BadRequestException('X-Store-Id header is required');
-    }
-
-    return this.shopifyService.getCredentialsStatus(storeId);
-  }
 
   // ==========================================================================
   // OAuth Endpoints

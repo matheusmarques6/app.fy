@@ -52,18 +52,15 @@ export class ShopifyService {
 
   /**
    * Generate Shopify OAuth install URL
-   * Uses per-store credentials configured by the customer
+   * Uses centralized credentials from environment variables
    */
   async generateInstallUrl(storeId: string, shop: string): Promise<{ installUrl: string; state: string }> {
-    // Get store's Shopify credentials
-    const credentials = await this.getStoreCredentials(storeId);
-    if (!credentials) {
-      throw new BadRequestException(
-        'Credenciais Shopify não configuradas. Configure o API Key e Secret do seu app Shopify primeiro.',
-      );
-    }
-
+    const clientId = this.config.get<string>('SHOPIFY_CLIENT_ID');
     const redirectUri = this.config.get<string>('SHOPIFY_REDIRECT_URI');
+
+    if (!clientId) {
+      throw new BadRequestException('SHOPIFY_CLIENT_ID não configurado no sistema');
+    }
     if (!redirectUri) {
       throw new BadRequestException('SHOPIFY_REDIRECT_URI não configurado no sistema');
     }
@@ -80,7 +77,7 @@ export class ShopifyService {
     const state = Buffer.from(JSON.stringify({ storeId, nonce, timestamp })).toString('base64');
 
     const installUrl = `https://${normalizedShop}/admin/oauth/authorize?` +
-      `client_id=${credentials.apiKey}&` +
+      `client_id=${clientId}&` +
       `scope=${this.scopes.join(',')}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `state=${state}`;
@@ -120,11 +117,11 @@ export class ShopifyService {
       throw new BadRequestException('Invalid state parameter');
     }
 
-    // 3. Validate HMAC signature using store's credentials
+    // 3. Validate HMAC signature using centralized credentials
     if (!hmac) {
       throw new BadRequestException('Missing HMAC signature');
     }
-    await this.validateHmac({ code, shop, state, timestamp }, hmac, storeId);
+    this.validateHmac({ code, shop, state, timestamp }, hmac);
 
     // 4. Validate timestamps
     if (timestamp) {
@@ -139,8 +136,8 @@ export class ShopifyService {
       throw new BadRequestException('OAuth state expired');
     }
 
-    // Exchange code for access token (using store's credentials)
-    const accessToken = await this.exchangeCodeForToken(shop, code, storeId);
+    // Exchange code for access token (using centralized credentials)
+    const accessToken = await this.exchangeCodeForToken(shop, code);
 
     // Get shop info
     const shopInfo = await this.getShopInfo(shop, accessToken);
@@ -261,20 +258,22 @@ export class ShopifyService {
 
   /**
    * Exchange authorization code for access token
-   * Uses per-store credentials
+   * Uses centralized credentials from environment variables
    */
-  private async exchangeCodeForToken(shop: string, code: string, storeId: string): Promise<string> {
-    const credentials = await this.getStoreCredentials(storeId);
-    if (!credentials) {
-      throw new BadRequestException('Credenciais Shopify não encontradas para esta loja');
+  private async exchangeCodeForToken(shop: string, code: string): Promise<string> {
+    const clientId = this.config.get<string>('SHOPIFY_CLIENT_ID');
+    const clientSecret = this.config.get<string>('SHOPIFY_CLIENT_SECRET');
+
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException('Credenciais Shopify não configuradas no sistema');
     }
 
     const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: credentials.apiKey,
-        client_secret: credentials.apiSecret,
+        client_id: clientId,
+        client_secret: clientSecret,
         code,
       }),
     });
@@ -402,10 +401,10 @@ export class ShopifyService {
    * Validate webhook HMAC signature
    */
   validateWebhookSignature(body: string, hmacHeader: string): boolean {
-    const apiSecret = this.config.get<string>('SHOPIFY_API_SECRET');
-    if (!apiSecret) return false;
+    const clientSecret = this.config.get<string>('SHOPIFY_CLIENT_SECRET');
+    if (!clientSecret) return false;
 
-    const hash = createHmac('sha256', apiSecret)
+    const hash = createHmac('sha256', clientSecret)
       .update(body, 'utf8')
       .digest('base64');
 
@@ -844,10 +843,10 @@ export class ShopifyService {
     return normalized;
   }
 
-  private async validateHmac(params: Record<string, string | undefined>, hmac: string, storeId: string): Promise<void> {
-    const credentials = await this.getStoreCredentials(storeId);
-    if (!credentials) {
-      throw new BadRequestException('Credenciais Shopify não encontradas para esta loja');
+  private validateHmac(params: Record<string, string | undefined>, hmac: string): void {
+    const clientSecret = this.config.get<string>('SHOPIFY_CLIENT_SECRET');
+    if (!clientSecret) {
+      throw new BadRequestException('SHOPIFY_CLIENT_SECRET não configurado no sistema');
     }
 
     // Build query string (sorted, without hmac)
@@ -857,7 +856,7 @@ export class ShopifyService {
 
     const message = entries.map(([key, value]) => `${key}=${value}`).join('&');
 
-    const hash = createHmac('sha256', credentials.apiSecret)
+    const hash = createHmac('sha256', clientSecret)
       .update(message)
       .digest('hex');
 

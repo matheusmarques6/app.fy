@@ -17,8 +17,6 @@ import {
   ExternalLink,
   AlertCircle,
   Store,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 
 type Tab = 'general' | 'integrations' | 'push' | 'security';
@@ -33,10 +31,6 @@ interface IntegrationStatus {
   created_at: string;
 }
 
-interface CredentialsStatus {
-  configured: boolean;
-  api_key_preview?: string;
-}
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -49,12 +43,6 @@ export default function SettingsPage() {
   // Get tab from URL or default to 'general'
   const tabFromUrl = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(tabFromUrl || 'general');
-
-  // Shopify credentials state
-  const [credentialsStatus, setCredentialsStatus] = useState<CredentialsStatus | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [apiSecret, setApiSecret] = useState('');
-  const [showApiSecret, setShowApiSecret] = useState(false);
 
   // Shopify connection state
   const [shopifyStatus, setShopifyStatus] = useState<IntegrationStatus | null>(null);
@@ -80,19 +68,14 @@ export default function SettingsPage() {
     }
   }, [tabFromUrl]);
 
-  // Load Shopify credentials and status
+  // Load Shopify connection status
   useEffect(() => {
     const loadShopifyData = async () => {
       if (!session?.accessToken || !storeId) return;
 
       setLoadingStatus(true);
       try {
-        // Load credentials status and connection status in parallel
-        const [credentials, status] = await Promise.all([
-          integrationsApi.getShopifyCredentials(session.accessToken, storeId),
-          integrationsApi.getShopifyStatus(session.accessToken, storeId),
-        ]);
-        setCredentialsStatus(credentials);
+        const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
         setShopifyStatus(status);
       } catch (err) {
         console.error('Failed to load Shopify data:', err);
@@ -131,21 +114,10 @@ export default function SettingsPage() {
   const handleConnectShopify = async () => {
     if (!session?.accessToken || !storeId || !shopDomain) return;
 
-    // Se não tem credenciais configuradas, precisa informar API Key e Secret
-    if (!credentialsStatus?.configured && (!apiKey || !apiSecret)) {
-      setError('Preencha o API Key e API Secret do seu app Shopify');
-      return;
-    }
-
     setConnecting(true);
     setError(null);
 
     try {
-      // Se tem credenciais para salvar, salva primeiro
-      if (apiKey && apiSecret) {
-        await integrationsApi.saveShopifyCredentials(session.accessToken, storeId, apiKey, apiSecret);
-      }
-
       // Initiate OAuth flow - get install URL from API
       const result = await integrationsApi.initiateShopifyOAuth(
         session.accessToken,
@@ -462,60 +434,6 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* API Credentials - only show if not configured */}
-              {!credentialsStatus?.configured && (
-                <>
-                  <div className="border-t border-gray-800 pt-6">
-                    <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 mb-4">
-                      <p className="text-blue-200 text-sm">
-                        <strong>Primeira conexão:</strong> Você precisa criar um App no{' '}
-                        <a href="https://partners.shopify.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                          Shopify Partners
-                        </a>{' '}
-                        e copiar as credenciais abaixo.
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                          API Key (Client ID)
-                        </label>
-                        <input
-                          type="text"
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          placeholder="Seu Shopify API Key"
-                          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                          API Secret Key
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showApiSecret ? 'text' : 'password'}
-                            value={apiSecret}
-                            onChange={(e) => setApiSecret(e.target.value)}
-                            placeholder="Seu Shopify API Secret Key"
-                            className="w-full px-4 py-3 pr-12 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 font-mono text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowApiSecret(!showApiSecret)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                          >
-                            {showApiSecret ? <EyeOff size={18} /> : <Eye size={18} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
               {error && (
                 <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
                   {error}
@@ -535,7 +453,7 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={handleConnectShopify}
-                disabled={connecting || !shopDomain || (!credentialsStatus?.configured && (!apiKey || !apiSecret))}
+                disabled={connecting || !shopDomain}
                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-blue-800 disabled:cursor-not-allowed"
               >
                 {connecting ? (
