@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual, createHash, scryptSync } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { ProductsService } from '../../products/products.service';
 import { QUEUE_NAMES } from '@appfy/shared';
 import {
   ShopifyOAuthCallbackDto,
@@ -38,12 +39,14 @@ export class ShopifyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly productsService: ProductsService,
     @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
     private readonly integrationsQueue: Queue,
   ) {
     // Derive encryption key from secret
     const secret = this.config.get<string>('ENCRYPTION_SECRET') || 'default-encryption-secret-change-me';
-    this.encryptionKey = scryptSync(secret, 'salt', 32);
+    const salt = this.config.get<string>('ENCRYPTION_SALT') || 'appfy-enc-v1';
+    this.encryptionKey = scryptSync(secret, salt, 32);
   }
 
   // ==========================================================================
@@ -183,8 +186,30 @@ export class ShopifyService {
     // Register webhooks
     await this.registerWebhooks(integration.id, shop, accessToken);
 
-    // Trigger initial sync
-    // TODO: Queue initial catalog sync job
+    // Set status to syncing before queuing initial sync
+    await this.prisma.integration.update({
+      where: { id: integration.id },
+      data: { status: 'syncing' },
+    });
+
+    // Queue initial catalog sync job
+    await this.integrationsQueue.add(
+      'catalog-sync',
+      {
+        storeId,
+        integrationId: integration.id,
+        platform: 'shopify',
+        syncType: 'full',
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+      },
+    );
+
+    this.logger.log(`Queued initial catalog sync for integration ${integration.id}`);
 
     return { integrationId: integration.id };
   }
@@ -640,14 +665,193 @@ export class ShopifyService {
     this.logger.log(`Processing product ${product.id} (${action}) for store ${storeId}`);
 
     if (action === 'delete') {
-      // Soft delete - mark as inactive
-      // TODO: Implement product table and soft delete
+      await this.productsService.deleteByExternalId(storeId, product.id.toString());
+      this.logger.log(`Soft-deleted product ${product.id} for store ${storeId}`);
       return;
     }
 
-    // TODO: Implement product sync
-    // For now, just log
-    this.logger.log(`Product ${product.id}: ${product.title}`);
+    await this.productsService.upsertFromShopify(storeId, product);
+    this.logger.log(`Upserted product ${product.id}: ${product.title}`);
+  }
+
+  // ==========================================================================
+  // Initial Sync
+  // ==========================================================================
+
+  /**
+   * Perform initial catalog sync for a Shopify integration.
+   * Fetches all products via Shopify REST API with cursor-based pagination.
+   * Respects rate limit: 500ms delay between pages (max 2 req/s).
+   * Updates Integration status: syncing → active on completion.
+   */
+  async initialSync(integrationId: string): Promise<{ synced: number }> {
+    const integration = await this.prisma.integration.findUnique({
+      where: { id: integrationId },
+    });
+
+    if (!integration || !integration.shop_domain || !integration.access_token_ref) {
+      throw new Error(`Integration ${integrationId} not found or missing credentials`);
+    }
+
+    const shop = integration.shop_domain;
+    const accessToken = this.decryptToken(integration.access_token_ref);
+    const storeId = integration.store_id;
+
+    this.logger.log(`Starting initial product sync for ${shop} (integration ${integrationId})`);
+
+    // Ensure status is 'syncing'
+    await this.prisma.integration.update({
+      where: { id: integrationId },
+      data: { status: 'syncing' },
+    });
+
+    let syncedCount = 0;
+    let pageInfo: string | null = null;
+    let isFirstPage = true;
+
+    try {
+      do {
+        // Build endpoint URL with pagination
+        let endpoint: string;
+        if (isFirstPage) {
+          endpoint = '/products.json?limit=250&status=any';
+          isFirstPage = false;
+        } else {
+          endpoint = `/products.json?limit=250&page_info=${pageInfo}`;
+        }
+
+        const response = await fetch(
+          `https://${shop}/admin/api/${this.apiVersion}${endpoint}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Access-Token': accessToken,
+            },
+          },
+        );
+
+        // Handle rate limiting with exponential backoff
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 2000;
+          this.logger.warn(`Rate limited during sync, waiting ${waitMs}ms`);
+          await this.sleep(waitMs);
+          continue; // Retry same page
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Shopify API error during sync: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json() as { products: ShopifyProductDto[] };
+        const products = data.products || [];
+
+        this.logger.log(`Syncing page of ${products.length} products for ${shop}`);
+
+        // Upsert each product
+        for (const product of products) {
+          try {
+            await this.productsService.upsertFromShopify(storeId, product);
+            syncedCount++;
+          } catch (err) {
+            this.logger.error(`Failed to upsert product ${product.id}: ${err}`);
+          }
+        }
+
+        // Parse next page cursor from Link header
+        // Shopify Link header format: <url>; rel="next", <url>; rel="previous"
+        const linkHeader = response.headers.get('Link');
+        pageInfo = this.parseNextPageInfo(linkHeader);
+
+        if (pageInfo) {
+          // Respect rate limit: wait 500ms between pages (2 req/s max)
+          await this.sleep(500);
+        }
+      } while (pageInfo);
+
+      // Sync complete - update integration status to active
+      await this.prisma.integration.update({
+        where: { id: integrationId },
+        data: {
+          status: 'active',
+          last_sync_at: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `Initial sync complete for ${shop}: ${syncedCount} products synced`,
+      );
+
+      return { synced: syncedCount };
+    } catch (error) {
+      // On failure, revert status to error
+      await this.prisma.integration.update({
+        where: { id: integrationId },
+        data: { status: 'error' },
+      }).catch(() => {});
+
+      this.logger.error(`Initial sync failed for ${shop}: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse the next page_info cursor from Shopify Link header.
+   * Returns null if there is no "next" page.
+   */
+  private parseNextPageInfo(linkHeader: string | null): string | null {
+    if (!linkHeader) return null;
+
+    // Split by comma to handle multiple links
+    const parts = linkHeader.split(',');
+    for (const part of parts) {
+      const trimmed = part.trim();
+      // Check if this is the "next" relation
+      if (trimmed.includes('rel="next"')) {
+        // Extract URL between < and >
+        const match = trimmed.match(/<([^>]+)>/);
+        if (match) {
+          try {
+            const url = new URL(match[1]);
+            return url.searchParams.get('page_info');
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get sync status for a store's Shopify integration
+   */
+  async getSyncStatus(storeId: string): Promise<{
+    status: string;
+    last_sync_at: Date | null;
+    product_count: number;
+  }> {
+    const integration = await this.prisma.integration.findUnique({
+      where: {
+        store_id_platform: {
+          store_id: storeId,
+          platform: 'shopify',
+        },
+      },
+    });
+
+    const productCount = await this.prisma.product.count({
+      where: { store_id: storeId },
+    });
+
+    return {
+      status: integration?.status ?? 'disconnected',
+      last_sync_at: integration?.last_sync_at ?? null,
+      product_count: productCount,
+    };
   }
 
   /**

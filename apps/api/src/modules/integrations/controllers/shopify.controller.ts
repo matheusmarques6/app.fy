@@ -347,7 +347,25 @@ export class ShopifyController {
   // ==========================================================================
 
   /**
-   * Trigger manual sync
+   * Get Shopify sync status (products count, last sync, integration status)
+   * GET /v1/integrations/shopify/sync-status
+   */
+  @Get('sync-status')
+  @UseGuards(JwtAuthGuard)
+  async getSyncStatus(@Headers('x-store-id') storeId: string): Promise<{
+    status: string;
+    last_sync_at: Date | null;
+    product_count: number;
+  }> {
+    if (!storeId) {
+      throw new BadRequestException('X-Store-Id header is required');
+    }
+
+    return this.shopifyService.getSyncStatus(storeId);
+  }
+
+  /**
+   * Trigger manual sync (re-sync)
    * POST /v1/integrations/shopify/sync
    */
   @Post('sync')

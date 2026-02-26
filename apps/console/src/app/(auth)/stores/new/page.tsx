@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { storesApi } from '../../../../lib/api-client';
 import { useAppStore } from '../../../../lib/store';
 
 export default function NewStorePage() {
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
   const router = useRouter();
   const { setCurrentStore, setStores, stores } = useAppStore();
   const [loading, setLoading] = useState(false);
@@ -23,18 +23,22 @@ export default function NewStorePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const newStore = await storesApi.create(session.accessToken, form);
+      const newStore = await storesApi.create(accessToken!, form);
       setStores([...stores, newStore]);
       setCurrentStore(newStore);
       router.push(`/stores/${newStore.id}/dashboard`);
     } catch (err: any) {
-      setError(err.message || 'Failed to create store');
+      const message =
+        err.status === 409
+          ? 'A store with this name already exists. Choose a different name.'
+          : err.message || 'Failed to create store';
+      setError(message);
       setLoading(false);
     }
   };
@@ -104,7 +108,6 @@ export default function NewStorePage() {
             >
               <option value="shopify">Shopify</option>
               <option value="woocommerce">WooCommerce</option>
-              <option value="other">Other</option>
             </select>
           </div>
 

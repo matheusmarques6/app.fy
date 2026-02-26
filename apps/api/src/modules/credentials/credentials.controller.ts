@@ -10,13 +10,13 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { CredentialsService } from './credentials.service';
 import { IosCertificateValidator } from './validators/ios-certificate.validator';
 import { AndroidKeystoreValidator } from './validators/android-keystore.validator';
 import { AppsService } from '../apps/apps.service';
 import { UploadIosCredentialDto, UploadAndroidCredentialDto } from './dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface UserContext {
   userId: string;
@@ -26,7 +26,7 @@ interface UserContext {
 }
 
 @Controller('apps/:appId/credentials')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class CredentialsController {
   constructor(
     private readonly credentialsService: CredentialsService,

@@ -10,11 +10,11 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BuildsService } from './builds.service';
 import { AppsService } from '../apps/apps.service';
 import { CreateBuildDto } from './dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface UserContext {
   userId: string;
@@ -24,7 +24,7 @@ interface UserContext {
 }
 
 @Controller('apps/:appId/builds')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class BuildsController {
   constructor(
     private readonly buildsService: BuildsService,

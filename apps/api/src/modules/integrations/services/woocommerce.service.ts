@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual, scryptSync } from 'crypto';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { ProductsService } from '../../products/products.service';
 import { QUEUE_NAMES } from '@appfy/shared';
 import {
   WooCommerceConnectDto,
@@ -27,12 +28,14 @@ export class WooCommerceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly productsService: ProductsService,
     @InjectQueue(QUEUE_NAMES.INTEGRATIONS_SYNC)
     private readonly integrationsQueue: Queue,
   ) {
     // Derive encryption key from secret
     const secret = this.config.get<string>('ENCRYPTION_SECRET') || 'default-encryption-secret-change-me';
-    this.encryptionKey = scryptSync(secret, 'salt', 32);
+    const salt = this.config.get<string>('ENCRYPTION_SALT') || 'appfy-enc-v1';
+    this.encryptionKey = scryptSync(secret, salt, 32);
   }
 
   // ==========================================================================
@@ -92,7 +95,89 @@ export class WooCommerceService {
     // Register webhooks
     await this.registerWebhooks(integration.id, normalizedUrl, consumer_key, consumer_secret);
 
+    // Update to syncing and enqueue initial catalog sync
+    await this.prisma.integration.update({
+      where: { id: integration.id },
+      data: { status: 'syncing' },
+    });
+
+    await this.integrationsQueue.add('catalog-sync', {
+      storeId,
+      integrationId: integration.id,
+      platform: 'woocommerce',
+      syncType: 'full',
+    });
+
     return { integrationId: integration.id };
+  }
+
+  /**
+   * Initial sync of all products from WooCommerce REST API
+   */
+  async initialSync(integrationId: string): Promise<{ synced: number }> {
+    const integration = await this.prisma.integration.findUnique({
+      where: { id: integrationId },
+    });
+
+    if (!integration) throw new Error('Integration not found');
+
+    if (!integration.access_token_ref) throw new Error('Integration missing credentials');
+    const { key, secret } = this.decryptCredentials(integration.access_token_ref);
+    const storeUrl = integration.shop_domain;
+
+    await this.prisma.integration.update({
+      where: { id: integrationId },
+      data: { status: 'syncing' },
+    });
+
+    let synced = 0;
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    try {
+      while (hasMore) {
+        const products = await this.wooApiRequest(
+          storeUrl,
+          key,
+          secret,
+          'GET',
+          `/products?per_page=${perPage}&page=${page}&status=any`,
+        );
+
+        if (!Array.isArray(products) || products.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        for (const product of products) {
+          await this.productsService.upsertFromWooCommerce(integration.store_id, product);
+          synced++;
+        }
+
+        hasMore = products.length === perPage;
+        page++;
+
+        if (hasMore) {
+          await this.sleep(500); // 2 req/s rate limit
+        }
+      }
+
+      await this.prisma.integration.update({
+        where: { id: integrationId },
+        data: { status: 'active', last_sync_at: new Date() },
+      });
+
+      this.logger.log(`WooCommerce initial sync complete: ${synced} products`);
+    } catch (error) {
+      await this.prisma.integration.update({
+        where: { id: integrationId },
+        data: { status: 'error' },
+      });
+      throw error;
+    }
+
+    return { synced };
   }
 
   /**
@@ -305,7 +390,7 @@ export class WooCommerceService {
 
     // Convert price to minor units
     const totalAmountMinor = Math.round(parseFloat(order.total) * 100);
-    const subtotalAmountMinor = Math.round(parseFloat(order.subtotal) * 100);
+    const subtotalAmountMinor = Math.round(parseFloat(order.subtotal || '0') * 100);
 
     // Get email from billing
     const email = order.billing?.email;
@@ -392,7 +477,12 @@ export class WooCommerceService {
     action: 'upsert' | 'delete',
   ): Promise<void> {
     this.logger.log(`Processing WooCommerce product ${product.id} (${action}) for store ${storeId}`);
-    // TODO: Implement product sync
+
+    if (action === 'delete') {
+      await this.productsService.deleteByExternalId(storeId, product.id.toString());
+    } else {
+      await this.productsService.upsertFromWooCommerce(storeId, product);
+    }
   }
 
   /**

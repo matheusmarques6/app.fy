@@ -241,26 +241,17 @@ export class IntegrationsProcessor extends WorkerHost {
 
     this.logger.log(`Syncing Shopify catalog for ${integration.shop_domain} (${syncType})`);
 
-    // Placeholder: Full implementation would fetch products from Shopify API
-    this.logger.log(`Shopify catalog sync placeholder - would sync from ${integration.shop_domain}`);
+    // Delegate to ShopifyService.initialSync which handles pagination, rate-limiting,
+    // product upsert, and status transitions (pending → syncing → active)
+    const result = await this.shopifyService.initialSync(integrationId);
+    this.logger.log(`Shopify catalog sync complete: ${result.synced} products synced`);
   }
 
   private async syncWooCommerceCatalog(integrationId: string, syncType: string): Promise<void> {
-    const integration = await this.prisma.integration.findUnique({
-      where: { id: integrationId },
-    });
+    this.logger.log(`Syncing WooCommerce catalog for integration ${integrationId} (${syncType})`);
 
-    if (!integration) {
-      throw new Error('Integration not found');
-    }
-
-    const metadata = integration.metadata as { storeUrl?: string } | null;
-    const storeUrl = metadata?.storeUrl || integration.shop_domain;
-
-    this.logger.log(`Syncing WooCommerce catalog for ${storeUrl} (${syncType})`);
-
-    // Placeholder: Full implementation would fetch products from WooCommerce API
-    this.logger.log(`WooCommerce catalog sync placeholder - would sync from ${storeUrl}`);
+    const result = await this.wooCommerceService.initialSync(integrationId);
+    this.logger.log(`WooCommerce catalog sync complete: ${result.synced} products synced`);
   }
 
   /**

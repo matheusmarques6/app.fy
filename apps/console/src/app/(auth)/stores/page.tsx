@@ -2,41 +2,43 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Plus, Store as StoreIcon, ArrowRight, Loader2 } from 'lucide-react';
 import { storesApi } from '../../../lib/api-client';
 import { useAppStore, type Store } from '../../../lib/store';
 
 export default function StoresPage() {
-  const { data: session, status } = useSession();
+  const { accessToken, loading: authLoading } = useAuth();
   const router = useRouter();
   const { setStores, setCurrentStore } = useAppStore();
   const [storeList, setStoreList] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!authLoading && !accessToken) {
       router.push('/login');
       return;
     }
 
-    if (status === 'authenticated' && session?.accessToken) {
-      storesApi.list(session.accessToken)
+    if (!authLoading && accessToken) {
+      storesApi.list(accessToken)
         .then((data) => {
           setStoreList(data);
           setStores(data);
         })
-        .catch(console.error)
+        .catch(() => {
+          // Silently fail — user sees empty list with option to create
+        })
         .finally(() => setLoading(false));
     }
-  }, [status, session, router, setStores]);
+  }, [authLoading, accessToken, router, setStores]);
 
   const handleSelectStore = (store: Store) => {
     setCurrentStore(store);
     router.push(`/stores/${store.id}/dashboard`);
   };
 
-  if (status === 'loading' || loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-500" size={32} />

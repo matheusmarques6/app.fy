@@ -11,11 +11,11 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AssetsService } from './assets.service';
 import { AppsService } from '../apps/apps.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface UserContext {
   userId: string;
@@ -28,7 +28,7 @@ interface UserContext {
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 @Controller('apps/:appId/assets')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class AssetsController {
   constructor(
     private readonly assetsService: AssetsService,

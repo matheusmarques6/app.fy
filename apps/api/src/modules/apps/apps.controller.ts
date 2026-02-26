@@ -13,11 +13,11 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { AppsService } from './apps.service';
 import { KeypairService } from './keypair.service';
 import { UpdateAppDto, SetupOneSignalDto } from './dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface UserContext {
   userId: string;
@@ -27,7 +27,7 @@ interface UserContext {
 }
 
 @Controller('apps')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class AppsController {
   constructor(
     private readonly appsService: AppsService,
