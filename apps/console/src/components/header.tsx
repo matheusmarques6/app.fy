@@ -1,12 +1,23 @@
 'use client';
 
-import { signOut, useSession } from 'next-auth/react';
 import { Bell, LogOut, User } from 'lucide-react';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/supabase/hooks';
 
 export function Header() {
-  const { data: session } = useSession();
+  const { user, signOut } = useAuth();
+  const router = useRouter();
   const [showDropdown, setShowDropdown] = useState(false);
+
+  const displayName = user?.user_metadata?.name || user?.email;
+  const initial = (user?.user_metadata?.name?.[0] || user?.email?.[0] || 'U').toUpperCase();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+    router.refresh();
+  };
 
   return (
     <header className="h-16 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6">
@@ -28,10 +39,10 @@ export function Header() {
             className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-800 transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
-              {session?.user?.name?.[0]?.toUpperCase() || session?.user?.email?.[0]?.toUpperCase() || 'U'}
+              {initial}
             </div>
             <span className="text-sm text-gray-300 hidden sm:block">
-              {session?.user?.name || session?.user?.email}
+              {displayName}
             </span>
           </button>
 
@@ -45,7 +56,6 @@ export function Header() {
                 <button
                   onClick={() => {
                     setShowDropdown(false);
-                    // Navigate to profile
                   }}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
                 >
@@ -54,7 +64,7 @@ export function Header() {
                 </button>
                 <div className="border-t border-gray-700 my-1" />
                 <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={handleSignOut}
                   className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-gray-700 transition-colors"
                 >
                   <LogOut size={16} />

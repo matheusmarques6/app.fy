@@ -1,38 +1,19 @@
-import { withAuth } from 'next-auth/middleware';
-import { NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { updateSession } from '@/lib/supabase/middleware';
 
-export default withAuth(
-  function middleware(req) {
-    // Continue to the requested page
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password'];
-        // Allow access to public paths without auth
-        if (publicPaths.includes(req.nextUrl.pathname)) {
-          return true;
-        }
-        // Require auth for all other pages
-        return !!token;
-      },
-    },
-    pages: {
-      signIn: '/login',
-    },
-  }
-);
+export async function middleware(request: NextRequest) {
+  return updateSession(request);
+}
 
 export const config = {
   matcher: [
     /*
      * Match all request paths except:
-     * - api (API routes)
      * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * - _next/image (image optimization)
+     * - favicon.ico
+     * - Public file extensions
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Plus, Search, Users, RefreshCw, MoreVertical } from 'lucide-react';
 import { segmentsApi, Segment } from '@/lib/api-client';
 
 export default function SegmentsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
 
   const [segments, setSegments] = useState<Segment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,13 +17,13 @@ export default function SegmentsPage() {
   const [search, setSearch] = useState('');
 
   const fetchSegments = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const data = await segmentsApi.list(session.accessToken, storeId);
+      const data = await segmentsApi.list(accessToken!, storeId);
       setSegments(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load segments');
@@ -34,7 +34,7 @@ export default function SegmentsPage() {
 
   useEffect(() => {
     fetchSegments();
-  }, [session, storeId]);
+  }, [accessToken, storeId]);
 
   const filteredSegments = segments.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase())

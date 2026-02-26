@@ -3,5 +3,6 @@
   "buildCommand": "pnpm turbo build --filter=@appfy/console",
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "outputDirectory": "apps/console/.next"
+  "outputDirectory": "apps/console/.next",
+  "ignoreCommand": "npx turbo-ignore --fallback=HEAD~1"
 }

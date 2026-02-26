@@ -1,25 +1,26 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/stores';
-  const error = searchParams.get('error');
   const registered = searchParams.get('registered');
   const reset = searchParams.get('reset');
+  const error = searchParams.get('error');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(error ? 'Invalid credentials' : '');
+  const [errorMessage, setErrorMessage] = useState(
+    error === 'auth_callback_failed' ? 'Authentication failed. Please try again.' : '',
+  );
 
   let successMessage = '';
-  if (registered) successMessage = 'Account created! Please sign in.';
+  if (registered) successMessage = 'Account created! Check your email to confirm your account.';
   if (reset) successMessage = 'Password reset successful! Please sign in with your new password.';
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,19 +28,17 @@ function LoginForm() {
     setLoading(true);
     setErrorMessage('');
 
-    const result = await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-      callbackUrl,
-    });
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (result?.error) {
+    if (error) {
       setErrorMessage('Invalid email or password');
       setLoading(false);
-    } else {
-      router.push(callbackUrl);
+      return;
     }
+
+    router.push('/stores');
+    router.refresh();
   };
 
   return (
@@ -92,7 +91,14 @@ function LoginForm() {
           disabled={loading}
           className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
         >
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="animate-spin" size={20} />
+              Signing in...
+            </span>
+          ) : (
+            'Sign in'
+          )}
         </button>
       </form>
 
@@ -103,7 +109,7 @@ function LoginForm() {
           </a>
         </p>
         <p className="text-gray-400 text-sm">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <a href="/register" className="text-blue-400 hover:text-blue-300">
             Sign up
           </a>

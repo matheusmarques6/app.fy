@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Search, RefreshCw, RotateCcw, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { webhooksApi, WebhookEvent } from '@/lib/api-client';
 
 export default function WebhooksPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
 
   const [events, setEvents] = useState<WebhookEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,20 +29,20 @@ export default function WebhooksPage() {
   const [retrying, setRetrying] = useState<string | null>(null);
 
   const fetchWebhooks = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
       const [eventsRes, statsRes] = await Promise.all([
-        webhooksApi.list(session.accessToken, storeId, {
+        webhooksApi.list(accessToken!, storeId, {
           page,
           limit: 20,
           provider: provider || undefined,
           status: status || undefined,
         }),
-        webhooksApi.getStats(session.accessToken, storeId),
+        webhooksApi.getStats(accessToken!, storeId),
       ]);
 
       setEvents(eventsRes.data);
@@ -58,14 +58,14 @@ export default function WebhooksPage() {
 
   useEffect(() => {
     fetchWebhooks();
-  }, [session, storeId, page, provider, status]);
+  }, [accessToken, storeId, page, provider, status]);
 
   const handleRetry = async (eventId: string) => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setRetrying(eventId);
     try {
-      await webhooksApi.retry(session.accessToken, storeId, eventId);
+      await webhooksApi.retry(accessToken!, storeId, eventId);
       fetchWebhooks();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retry webhook');

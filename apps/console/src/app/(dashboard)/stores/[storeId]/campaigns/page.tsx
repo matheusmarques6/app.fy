@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Plus, Search, RefreshCw, Send, Calendar, MoreVertical } from 'lucide-react';
 import { campaignsApi, Campaign } from '@/lib/api-client';
 
 export default function CampaignsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,13 +17,13 @@ export default function CampaignsPage() {
   const [search, setSearch] = useState('');
 
   const fetchCampaigns = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const data = await campaignsApi.list(session.accessToken, storeId);
+      const data = await campaignsApi.list(accessToken!, storeId);
       setCampaigns(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load campaigns');
@@ -34,7 +34,7 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     fetchCampaigns();
-  }, [session, storeId]);
+  }, [accessToken, storeId]);
 
   const filteredCampaigns = campaigns.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase())

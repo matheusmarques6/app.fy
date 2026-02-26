@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { integrationsApi } from '../../../../lib/api-client';
 import { CheckCircle, XCircle, Loader2, Store, ArrowRight } from 'lucide-react';
 
@@ -14,7 +14,7 @@ type ValidationStep = {
 };
 
 function ShopifyCallbackContent() {
-  const { data: session, status: sessionStatus } = useSession();
+  const { accessToken, loading: sessionLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -41,7 +41,7 @@ function ShopifyCallbackContent() {
 
   // Run validation when session is ready
   useEffect(() => {
-    if (sessionStatus !== 'authenticated' || !session?.accessToken || !storeId) {
+    if (sessionLoading || !accessToken || !storeId) {
       return;
     }
 
@@ -69,7 +69,7 @@ function ShopifyCallbackContent() {
       await sleep(500);
 
       try {
-        const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
+        const status = await integrationsApi.getShopifyStatus(accessToken!, storeId);
 
         if (status?.status === 'active') {
           updateStep('connection', 'success');
@@ -90,7 +90,7 @@ function ShopifyCallbackContent() {
       await sleep(500);
 
       try {
-        const preview = await integrationsApi.getShopifyPreview(session.accessToken, storeId);
+        const preview = await integrationsApi.getShopifyPreview(accessToken!, storeId);
 
         if (preview.connected) {
           updateStep('products', 'success');
@@ -106,7 +106,7 @@ function ShopifyCallbackContent() {
     };
 
     runValidation();
-  }, [sessionStatus, session?.accessToken, storeId, success, error]);
+  }, [sessionLoading, accessToken, storeId, success, error]);
 
   // On success: notify parent window and close popup (or redirect if not popup)
   useEffect(() => {
@@ -177,7 +177,7 @@ function ShopifyCallbackContent() {
   };
 
   // Loading session
-  if (sessionStatus === 'loading') {
+  if (sessionLoading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-500" size={48} />
@@ -186,7 +186,7 @@ function ShopifyCallbackContent() {
   }
 
   // Not authenticated
-  if (sessionStatus === 'unauthenticated') {
+  if (!sessionLoading && !accessToken) {
     router.push('/login');
     return null;
   }

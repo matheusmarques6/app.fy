@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Sidebar } from '../../../../components/sidebar';
 import { Header } from '../../../../components/header';
 import { useAppStore } from '../../../../lib/store';
@@ -13,22 +13,22 @@ export default function StoreLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { data: session, status } = useSession();
+  const { accessToken, loading } = useAuth();
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
   const { currentStore, stores, setCurrentStore, setStores } = useAppStore();
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!loading && !accessToken) {
       router.push('/login');
       return;
     }
 
-    if (status === 'authenticated' && session?.accessToken) {
+    if (!loading && accessToken) {
       // Load stores if not loaded
       if (stores.length === 0) {
-        storesApi.list(session.accessToken).then((data) => {
+        storesApi.list(accessToken).then((data) => {
           setStores(data);
 
           // Set current store from URL
@@ -51,9 +51,9 @@ export default function StoreLayout({
         }
       }
     }
-  }, [status, session, storeId, stores, currentStore, router, setCurrentStore, setStores]);
+  }, [loading, accessToken, storeId, stores, currentStore, router, setCurrentStore, setStores]);
 
-  if (status === 'loading') {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" />
@@ -61,7 +61,7 @@ export default function StoreLayout({
     );
   }
 
-  if (status === 'unauthenticated') {
+  if (!accessToken) {
     return null;
   }
 

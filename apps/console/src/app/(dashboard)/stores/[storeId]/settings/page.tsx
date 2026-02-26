@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { useAppStore } from '../../../../../lib/store';
 import { integrationsApi } from '../../../../../lib/api-client';
 import {
@@ -32,7 +32,7 @@ interface IntegrationStatus {
 
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
   const params = useParams();
   const searchParams = useSearchParams();
   const storeId = params.storeId as string;
@@ -69,11 +69,11 @@ export default function SettingsPage() {
   // Load Shopify connection status
   useEffect(() => {
     const loadShopifyData = async () => {
-      if (!session?.accessToken || !storeId) return;
+      if (!accessToken || !storeId) return;
 
       setLoadingStatus(true);
       try {
-        const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
+        const status = await integrationsApi.getShopifyStatus(accessToken!, storeId);
         setShopifyStatus(status);
       } catch (err) {
         console.error('Failed to load Shopify data:', err);
@@ -85,7 +85,7 @@ export default function SettingsPage() {
     if (activeTab === 'integrations') {
       loadShopifyData();
     }
-  }, [session?.accessToken, storeId, activeTab]);
+  }, [accessToken, storeId, activeTab]);
 
   // Listen for OAuth callback success from popup
   useEffect(() => {
@@ -98,8 +98,8 @@ export default function SettingsPage() {
         setSuccess('Shopify conectado com sucesso!');
         // Reload status to reflect new connection
         const loadStatus = async () => {
-          if (session?.accessToken) {
-            const status = await integrationsApi.getShopifyStatus(session.accessToken, storeId);
+          if (accessToken) {
+            const status = await integrationsApi.getShopifyStatus(accessToken!, storeId);
             setShopifyStatus(status);
           }
         };
@@ -112,10 +112,10 @@ export default function SettingsPage() {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [session?.accessToken, storeId]);
+  }, [accessToken, storeId]);
 
   const handleConnectShopify = async () => {
-    if (!session?.accessToken || !storeId || !shopDomain) return;
+    if (!accessToken || !storeId || !shopDomain) return;
 
     setConnecting(true);
     setError(null);
@@ -123,7 +123,7 @@ export default function SettingsPage() {
     try {
       // Get OAuth install URL from API
       const { install_url } = await integrationsApi.startShopifyInstall(
-        session.accessToken,
+        accessToken!,
         storeId,
         shopDomain,
       );
@@ -148,13 +148,13 @@ export default function SettingsPage() {
   };
 
   const handleDisconnectShopify = async () => {
-    if (!session?.accessToken || !storeId) return;
+    if (!accessToken || !storeId) return;
 
     if (!confirm('Tem certeza que deseja desconectar o Shopify?')) return;
 
     setDisconnecting(true);
     try {
-      await integrationsApi.disconnectShopify(session.accessToken, storeId);
+      await integrationsApi.disconnectShopify(accessToken!, storeId);
       setShopifyStatus(null);
       setSuccess('Shopify desconectado');
     } catch (err) {

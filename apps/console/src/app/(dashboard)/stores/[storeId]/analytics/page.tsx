@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { analyticsApi, AnalyticsOverview, PushStats } from '@/lib/api-client';
 
@@ -21,7 +21,7 @@ interface RevenueAttribution {
 export default function AnalyticsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('30d');
 
   const fetchData = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
@@ -44,10 +44,10 @@ export default function AnalyticsPage() {
       const fromStr = fromDate.toISOString();
 
       const [overviewRes, pushRes, eventsRes, revenueRes] = await Promise.all([
-        analyticsApi.getOverview(session.accessToken, storeId),
-        analyticsApi.getPushStats(session.accessToken, storeId, fromStr),
-        analyticsApi.getEventStats(session.accessToken, storeId, fromStr),
-        analyticsApi.getRevenueAttribution(session.accessToken, storeId, fromStr),
+        analyticsApi.getOverview(accessToken!, storeId),
+        analyticsApi.getPushStats(accessToken!, storeId, fromStr),
+        analyticsApi.getEventStats(accessToken!, storeId, fromStr),
+        analyticsApi.getRevenueAttribution(accessToken!, storeId, fromStr),
       ]);
 
       setOverview(overviewRes);
@@ -63,7 +63,7 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetchData();
-  }, [session, storeId, dateRange]);
+  }, [accessToken, storeId, dateRange]);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';

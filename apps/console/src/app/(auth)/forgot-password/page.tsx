@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1';
+import { createClient } from '@/lib/supabase/client';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -17,24 +16,19 @@ export default function ForgotPasswordPage() {
     setError('');
     setLoading(true);
 
-    try {
-      const response = await fetch(`${API_URL}/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to send reset link');
-      }
-
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send reset link');
-    } finally {
+    if (error) {
+      setError(error.message);
       setLoading(false);
+      return;
     }
+
+    setSuccess(true);
+    setLoading(false);
   };
 
   if (success) {
@@ -74,7 +68,7 @@ export default function ForgotPasswordPage() {
 
         <div className="bg-gray-800 rounded-lg shadow-xl p-8">
           <p className="text-gray-400 text-sm mb-6">
-            Enter your email address and we'll send you a link to reset your password.
+            Enter your email and we&apos;ll send you a link to reset your password.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">

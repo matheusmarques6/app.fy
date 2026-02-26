@@ -1,14 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-  ListObjectsV2Command,
-  HeadObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type {
   UploadOptions,
   UploadResult,
@@ -20,55 +12,45 @@ import type {
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
-  private readonly s3: S3Client;
-  private readonly bucket: string;
+  private readonly supabase: SupabaseClient;
+  private readonly bucketAssets: string;
+  private readonly bucketLogs: string;
   private readonly isConfigured: boolean;
 
   constructor(private readonly config: ConfigService) {
-    const bucket = config.get<string>('S3_BUCKET');
-    const accessKeyId = config.get<string>('S3_ACCESS_KEY_ID');
-    const secretAccessKey = config.get<string>('S3_SECRET_ACCESS_KEY');
+    const supabaseUrl = config.get<string>('SUPABASE_URL');
+    const serviceRoleKey = config.get<string>('SUPABASE_SERVICE_ROLE_KEY');
 
-    this.isConfigured = !!(bucket && accessKeyId && secretAccessKey);
+    this.bucketAssets = config.get<string>('SUPABASE_STORAGE_BUCKET_ASSETS', 'appfy-assets');
+    this.bucketLogs = config.get<string>('SUPABASE_STORAGE_BUCKET_LOGS', 'appfy-logs');
+
+    this.isConfigured = !!(supabaseUrl && serviceRoleKey);
 
     if (this.isConfigured) {
-      this.bucket = bucket!;
-      this.s3 = new S3Client({
-        region: config.get('S3_REGION', 'auto'),
-        endpoint: config.get('S3_ENDPOINT'),
-        credentials: {
-          accessKeyId: accessKeyId!,
-          secretAccessKey: secretAccessKey!,
-        },
-        // Required for Cloudflare R2
-        forcePathStyle: true,
+      this.supabase = createClient(supabaseUrl!, serviceRoleKey!, {
+        auth: { persistSession: false },
       });
     } else {
-      this.bucket = '';
-      this.s3 = null as unknown as S3Client;
+      this.supabase = null as unknown as SupabaseClient;
     }
   }
 
   onModuleInit() {
     if (!this.isConfigured) {
       this.logger.warn(
-        'Storage service not configured. S3_BUCKET, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY are required.',
+        'Storage service not configured. SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.',
       );
     } else {
-      this.logger.log(`Storage service configured with bucket: ${this.bucket}`);
+      this.logger.log(
+        `Supabase Storage configured. Buckets: ${this.bucketAssets}, ${this.bucketLogs}`,
+      );
     }
   }
 
-  /**
-   * Check if storage is properly configured
-   */
   isEnabled(): boolean {
     return this.isConfigured;
   }
 
-  /**
-   * Upload a file to S3
-   */
   async upload(
     key: string,
     data: Buffer,
@@ -76,90 +58,73 @@ export class StorageService implements OnModuleInit {
   ): Promise<UploadResult> {
     this.ensureConfigured();
 
-    await this.s3.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: data,
-        ContentType: options.contentType,
-        CacheControl: options.cacheControl,
-        Metadata: options.metadata,
-      }),
-    );
+    const bucket = this.resolveBucket(key);
+    const { error } = await this.supabase.storage
+      .from(bucket)
+      .upload(key, data, {
+        contentType: options.contentType,
+        cacheControl: options.cacheControl ?? '3600',
+        upsert: true,
+        metadata: options.metadata,
+      });
 
-    this.logger.debug(`Uploaded file to ${key}`);
+    if (error) {
+      throw new Error(`Storage upload failed for key "${key}": ${error.message}`);
+    }
+
+    this.logger.debug(`Uploaded file to ${bucket}/${key}`);
 
     return {
       key,
-      uri: `s3://${this.bucket}/${key}`,
+      uri: `supabase://${bucket}/${key}`,
     };
   }
 
-  /**
-   * Download a file from S3
-   */
   async download(key: string): Promise<Buffer> {
     this.ensureConfigured();
 
-    const response = await this.s3.send(
-      new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      }),
-    );
+    const bucket = this.resolveBucket(key);
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .download(key);
 
-    if (!response.Body) {
-      throw new Error(`No body returned for key: ${key}`);
+    if (error || !data) {
+      throw new Error(`Storage download failed for key "${key}": ${error?.message}`);
     }
 
-    return Buffer.from(await response.Body.transformToByteArray());
+    return Buffer.from(await data.arrayBuffer());
   }
 
-  /**
-   * Check if an object exists
-   */
   async exists(key: string): Promise<boolean> {
     this.ensureConfigured();
 
-    try {
-      await this.s3.send(
-        new HeadObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-        }),
-      );
-      return true;
-    } catch (error: unknown) {
-      if (
-        error instanceof Error &&
-        'name' in error &&
-        error.name === 'NotFound'
-      ) {
-        return false;
-      }
-      throw error;
-    }
+    const bucket = this.resolveBucket(key);
+    const folder = key.split('/').slice(0, -1).join('/') || '';
+    const filename = key.split('/').pop()!;
+
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .list(folder, { search: filename });
+
+    if (error) return false;
+    return (data ?? []).some((f) => f.name === filename);
   }
 
-  /**
-   * Delete a file from S3
-   */
   async delete(key: string): Promise<void> {
     this.ensureConfigured();
 
-    await this.s3.send(
-      new DeleteObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      }),
-    );
+    const bucket = this.resolveBucket(key);
+    const { error } = await this.supabase.storage
+      .from(bucket)
+      .remove([key]);
 
-    this.logger.debug(`Deleted file: ${key}`);
+    if (error) {
+      throw new Error(`Storage delete failed for key "${key}": ${error.message}`);
+    }
+
+    this.logger.debug(`Deleted file: ${bucket}/${key}`);
   }
 
-  /**
-   * Delete multiple files with a prefix
-   */
   async deletePrefix(prefix: string): Promise<number> {
     this.ensureConfigured();
 
@@ -175,88 +140,94 @@ export class StorageService implements OnModuleInit {
     return deleted;
   }
 
-  /**
-   * List objects in S3
-   */
   async list(options: ListOptions = {}): Promise<ListResult> {
     this.ensureConfigured();
 
-    const response = await this.s3.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: options.prefix,
-        MaxKeys: options.maxKeys,
-        ContinuationToken: options.continuationToken,
-      }),
-    );
+    const bucket = this.resolveBucket(options.prefix ?? '');
+    const folder = options.prefix
+      ? options.prefix.split('/').slice(0, -1).join('/')
+      : '';
+
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .list(folder, {
+        limit: options.maxKeys ?? 100,
+        offset: 0,
+        search: options.prefix?.split('/').pop(),
+      });
+
+    if (error) {
+      throw new Error(`Storage list failed: ${error.message}`);
+    }
+
+    const keys = (data ?? [])
+      .filter((f) => f.name !== '.emptyFolderPlaceholder')
+      .map((f) => (folder ? `${folder}/${f.name}` : f.name));
 
     return {
-      keys: (response.Contents || []).map((obj) => obj.Key!),
-      nextContinuationToken: response.NextContinuationToken,
-      isTruncated: response.IsTruncated || false,
+      keys,
+      isTruncated: keys.length === (options.maxKeys ?? 100),
     };
   }
 
-  /**
-   * Generate a pre-signed URL for downloading
-   */
   async getSignedDownloadUrl(
     key: string,
     options: SignedUrlOptions = {},
   ): Promise<string> {
     this.ensureConfigured();
 
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ResponseContentDisposition: options.responseContentDisposition,
-    });
+    const bucket = this.resolveBucket(key);
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .createSignedUrl(key, options.expiresIn ?? 3600, {
+        download: options.responseContentDisposition
+          ? true
+          : undefined,
+      });
 
-    return getSignedUrl(this.s3, command, {
-      expiresIn: options.expiresIn || 3600,
-    });
+    if (error || !data) {
+      throw new Error(`Failed to create signed URL for "${key}": ${error?.message}`);
+    }
+
+    return data.signedUrl;
   }
 
-  /**
-   * Generate a pre-signed URL for uploading
-   */
   async getSignedUploadUrl(
     key: string,
-    contentType: string,
+    _contentType: string,
     options: SignedUrlOptions = {},
   ): Promise<string> {
     this.ensureConfigured();
 
-    const command = new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      ContentType: contentType,
-    });
+    const bucket = this.resolveBucket(key);
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .createSignedUploadUrl(key, { upsert: true });
 
-    return getSignedUrl(this.s3, command, {
-      expiresIn: options.expiresIn || 3600,
-    });
-  }
-
-  /**
-   * Get the public URL for an object (if bucket is public)
-   */
-  getPublicUrl(key: string): string {
-    const endpoint = this.config.get<string>('S3_PUBLIC_URL');
-    if (endpoint) {
-      return `${endpoint}/${key}`;
+    if (error || !data) {
+      throw new Error(`Failed to create signed upload URL for "${key}": ${error?.message}`);
     }
-    // Default S3 URL format
-    return `https://${this.bucket}.s3.amazonaws.com/${key}`;
+
+    return data.signedUrl;
   }
 
-  /**
-   * Ensure storage is configured before operations
-   */
+  getPublicUrl(key: string): string {
+    this.ensureConfigured();
+
+    const bucket = this.resolveBucket(key);
+    const { data } = this.supabase.storage.from(bucket).getPublicUrl(key);
+    return data.publicUrl;
+  }
+
+  private resolveBucket(key: string): string {
+    if (key.startsWith('logs/')) return this.bucketLogs;
+    return this.bucketAssets;
+  }
+
   private ensureConfigured(): void {
     if (!this.isConfigured) {
       throw new Error(
-        'Storage service is not configured. Please set S3_BUCKET, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY.',
+        'Storage service is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
       );
     }
   }

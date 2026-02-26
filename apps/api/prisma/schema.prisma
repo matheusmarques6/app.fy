@@ -10,8 +10,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // =============================================================================
@@ -102,6 +103,7 @@ model Store {
   deliveries    Delivery[]
   orders        Order[]
   customers     Customer[]
+  products      Product[]
   audit_logs    AuditLog[]
   remote_configs RemoteConfig[]
   webhook_events WebhookEvent[]
@@ -631,6 +633,33 @@ model Delivery {
   @@index([device_id])
   @@index([scheduled_for])
   @@map("deliveries")
+}
+
+// =============================================================================
+// PRODUCTS (Synced from Shopify/WooCommerce)
+// =============================================================================
+
+model Product {
+  id                  String   @id @default(uuid()) @db.Uuid
+  store_id            String   @db.Uuid
+  external_product_id String   // Shopify/Woo product ID
+  title               String
+  handle              String
+  status              String   @default("active") // active, draft, archived
+  price               Decimal  @default(0) @db.Decimal(10, 2)
+  image_url           String?
+  tags                String[]
+  metadata            Json     @default("{}")
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  // Relations
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, external_product_id])
+  @@index([store_id])
+  @@index([store_id, status])
+  @@map("products")
 }
 
 // =============================================================================

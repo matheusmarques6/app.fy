@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import {
   Check,
   ChevronLeft,
@@ -22,7 +22,7 @@ import {
 import { appsApi, App } from '@/lib/api-client';
 
 export default function AppPreviewPage() {
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
@@ -34,11 +34,11 @@ export default function AppPreviewPage() {
 
   useEffect(() => {
     const loadApp = async () => {
-      if (!session?.accessToken || !storeId) return;
+      if (!accessToken || !storeId) return;
 
       try {
         setLoading(true);
-        const apps = await appsApi.list(session.accessToken, storeId);
+        const apps = await appsApi.list(accessToken!, storeId);
         if (apps.length > 0) {
           setApp(apps[0]);
           const config = apps[0].config as Record<string, unknown>;
@@ -54,7 +54,7 @@ export default function AppPreviewPage() {
     };
 
     loadApp();
-  }, [session?.accessToken, storeId]);
+  }, [accessToken, storeId]);
 
   if (loading) {
     return (

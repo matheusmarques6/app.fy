@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import {
   Check,
   ChevronLeft,
@@ -103,7 +103,7 @@ const defaultConfig: AppConfig = {
 };
 
 export default function AppBuilderPage() {
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
@@ -142,17 +142,17 @@ export default function AppBuilderPage() {
   // Load existing app and integration status
   useEffect(() => {
     const loadData = async () => {
-      if (!session?.accessToken || !storeId) return;
+      if (!accessToken || !storeId) return;
 
       try {
         setLoading(true);
 
         // Load integration status
-        const status = await appsApi.getIntegrationStatus(session.accessToken, storeId);
+        const status = await appsApi.getIntegrationStatus(accessToken!, storeId);
         setIntegrationStatus(status);
 
         // Load existing app
-        const apps = await appsApi.list(session.accessToken, storeId);
+        const apps = await appsApi.list(accessToken!, storeId);
         if (apps.length > 0) {
           setApp(apps[0]);
           const existingConfig = apps[0].config as Record<string, unknown>;
@@ -175,7 +175,7 @@ export default function AppBuilderPage() {
         if (status?.connected && status.platform === 'shopify') {
           setLoadingPreview(true);
           try {
-            const preview = await integrationsApi.getShopifyPreview(session.accessToken, storeId);
+            const preview = await integrationsApi.getShopifyPreview(accessToken!, storeId);
             setStorePreview(preview);
 
             // Auto-fill name from store if not set
@@ -196,7 +196,7 @@ export default function AppBuilderPage() {
     };
 
     loadData();
-  }, [session?.accessToken, storeId, currentStore?.name]);
+  }, [accessToken, storeId, currentStore?.name]);
 
   // Update config when store changes
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function AppBuilderPage() {
   };
 
   const handleCreateApp = async () => {
-    if (!session?.accessToken || !storeId) return;
+    if (!accessToken || !storeId) return;
 
     try {
       setCreating(true);
@@ -235,14 +235,14 @@ export default function AppBuilderPage() {
       };
 
       if (app) {
-        const updated = await appsApi.update(session.accessToken, storeId, app.id, {
+        const updated = await appsApi.update(accessToken!, storeId, app.id, {
           name: config.name,
           config: appConfig,
         });
         setApp(updated);
       } else {
-        const newApp = await appsApi.create(session.accessToken, storeId, config.name);
-        const updated = await appsApi.update(session.accessToken, storeId, newApp.id, {
+        const newApp = await appsApi.create(accessToken!, storeId, config.name);
+        const updated = await appsApi.update(accessToken!, storeId, newApp.id, {
           config: appConfig,
         });
         setApp(updated);

@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Plus, Search, Play, Pause, RefreshCw, MoreVertical, Zap } from 'lucide-react';
 import { automationsApi, Automation } from '@/lib/api-client';
 
 export default function AutomationsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
 
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,13 +18,13 @@ export default function AutomationsPage() {
   const [toggling, setToggling] = useState<string | null>(null);
 
   const fetchAutomations = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const data = await automationsApi.list(session.accessToken, storeId);
+      const data = await automationsApi.list(accessToken!, storeId);
       setAutomations(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load automations');
@@ -35,15 +35,15 @@ export default function AutomationsPage() {
 
   useEffect(() => {
     fetchAutomations();
-  }, [session, storeId]);
+  }, [accessToken, storeId]);
 
   const handleToggle = async (automation: Automation) => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setToggling(automation.id);
     try {
       await automationsApi.toggle(
-        session.accessToken,
+        accessToken!,
         storeId,
         automation.id,
         automation.status !== 'active'

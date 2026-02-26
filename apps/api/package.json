@@ -24,8 +24,7 @@
   },
   "dependencies": {
     "@appfy/shared": "workspace:*",
-    "@aws-sdk/client-s3": "^3.975.0",
-    "@aws-sdk/s3-request-presigner": "^3.975.0",
+    "@supabase/supabase-js": "^2.47.0",
     "@nestjs/bullmq": "^10.0.1",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^4.0.2",

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { useAppStore } from '@/lib/store';
 import { BarChart3, Bell, Users, Smartphone, TrendingUp, RefreshCw } from 'lucide-react';
 import { analyticsApi, devicesApi, campaignsApi, AnalyticsOverview, PushStats, Campaign } from '@/lib/api-client';
@@ -10,7 +10,7 @@ import { analyticsApi, devicesApi, campaignsApi, AnalyticsOverview, PushStats, C
 export default function DashboardPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
   const { currentStore } = useAppStore();
 
   const [loading, setLoading] = useState(true);
@@ -20,16 +20,16 @@ export default function DashboardPage() {
   const [recentCampaigns, setRecentCampaigns] = useState<Campaign[]>([]);
 
   const fetchData = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
       const [overviewRes, pushRes, campaignsRes] = await Promise.all([
-        analyticsApi.getOverview(session.accessToken, storeId),
-        analyticsApi.getPushStats(session.accessToken, storeId),
-        campaignsApi.list(session.accessToken, storeId),
+        analyticsApi.getOverview(accessToken!, storeId),
+        analyticsApi.getPushStats(accessToken!, storeId),
+        campaignsApi.list(accessToken!, storeId),
       ]);
 
       setOverview(overviewRes);
@@ -44,7 +44,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
-  }, [session, storeId]);
+  }, [accessToken, storeId]);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';

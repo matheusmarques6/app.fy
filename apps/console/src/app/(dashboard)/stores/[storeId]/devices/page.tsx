@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/lib/supabase/hooks';
 import { Search, Filter, RefreshCw, Smartphone, Monitor } from 'lucide-react';
 import { devicesApi, Device } from '@/lib/api-client';
 
 export default function DevicesPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { data: session } = useSession();
+  const { accessToken } = useAuth();
 
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,20 +28,20 @@ export default function DevicesPage() {
   } | null>(null);
 
   const fetchDevices = async () => {
-    if (!session?.accessToken) return;
+    if (!accessToken) return;
 
     setLoading(true);
     setError(null);
 
     try {
       const [devicesRes, statsRes] = await Promise.all([
-        devicesApi.list(session.accessToken, storeId, {
+        devicesApi.list(accessToken!, storeId, {
           page,
           limit: 20,
           platform: platform || undefined,
           search: search || undefined,
         }),
-        devicesApi.getStats(session.accessToken, storeId),
+        devicesApi.getStats(accessToken!, storeId),
       ]);
 
       setDevices(devicesRes.data);
@@ -57,7 +57,7 @@ export default function DevicesPage() {
 
   useEffect(() => {
     fetchDevices();
-  }, [session, storeId, page, platform]);
+  }, [accessToken, storeId, page, platform]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
