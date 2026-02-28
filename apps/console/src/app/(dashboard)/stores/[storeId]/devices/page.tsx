@@ -1,69 +1,40 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/lib/supabase/hooks';
-import { Search, Filter, RefreshCw, Smartphone, Monitor } from 'lucide-react';
-import { devicesApi, Device } from '@/lib/api-client';
+import { Search, RefreshCw, Smartphone, Monitor } from 'lucide-react';
+import { useDebounce, useDevices, useDeviceStats } from '@/lib/hooks';
 
 export default function DevicesPage() {
   const params = useParams();
   const storeId = params.storeId as string;
   const { accessToken } = useAuth();
 
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [platform, setPlatform] = useState<'ios' | 'android' | ''>('');
-  const [stats, setStats] = useState<{
-    total: number;
-    by_platform: Record<string, number>;
-    active_today: number;
-    with_push_enabled: number;
-    push_opt_in_rate: number;
-  } | null>(null);
 
-  const fetchDevices = async () => {
-    if (!accessToken) return;
+  const {
+    data: devicesRes,
+    error: devicesError,
+    isLoading: devicesLoading,
+    mutate: mutateDevices,
+  } = useDevices({
+    page,
+    limit: 20,
+    platform: platform || undefined,
+    search: debouncedSearch || undefined,
+  });
 
-    setLoading(true);
-    setError(null);
+  const { data: stats } = useDeviceStats();
 
-    try {
-      const [devicesRes, statsRes] = await Promise.all([
-        devicesApi.list(accessToken!, storeId, {
-          page,
-          limit: 20,
-          platform: platform || undefined,
-          search: search || undefined,
-        }),
-        devicesApi.getStats(accessToken!, storeId),
-      ]);
-
-      setDevices(devicesRes.data);
-      setTotalPages(devicesRes.pagination.total_pages);
-      setTotal(devicesRes.pagination.total);
-      setStats(statsRes);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load devices');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDevices();
-  }, [accessToken, storeId, page, platform]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    fetchDevices();
-  };
+  const devices = devicesRes?.data ?? [];
+  const totalPages = devicesRes?.pagination.total_pages ?? 1;
+  const total = devicesRes?.pagination.total ?? 0;
+  const loading = devicesLoading;
+  const error = devicesError ? (devicesError instanceof Error ? devicesError.message : 'Failed to load devices') : null;
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('pt-BR', {
@@ -82,7 +53,7 @@ export default function DevicesPage() {
           <p className="text-gray-400 mt-1">Manage app installs and push subscriptions</p>
         </div>
         <button
-          onClick={fetchDevices}
+          onClick={() => mutateDevices()}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors disabled:opacity-50"
         >
@@ -115,7 +86,7 @@ export default function DevicesPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-4">
-        <form onSubmit={handleSearch} className="flex-1 relative">
+        <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
@@ -124,7 +95,7 @@ export default function DevicesPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
           />
-        </form>
+        </div>
         <select
           value={platform}
           onChange={(e) => {

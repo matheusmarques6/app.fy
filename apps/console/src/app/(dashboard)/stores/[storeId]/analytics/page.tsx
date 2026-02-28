@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/lib/supabase/hooks';
 import { TrendingUp, RefreshCw } from 'lucide-react';
+import { useAnalyticsOverview, usePushStats } from '@/lib/hooks';
+import useSWR from 'swr';
 import { analyticsApi, AnalyticsOverview, PushStats } from '@/lib/api-client';
 
 interface EventStats {
@@ -23,47 +25,38 @@ export default function AnalyticsPage() {
   const storeId = params.storeId as string;
   const { accessToken } = useAuth();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [pushStats, setPushStats] = useState<PushStats | null>(null);
-  const [eventStats, setEventStats] = useState<EventStats | null>(null);
-  const [revenueAttribution, setRevenueAttribution] = useState<RevenueAttribution | null>(null);
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('30d');
 
-  const fetchData = async () => {
-    if (!accessToken) return;
+  const fromStr = useMemo(() => {
+    const days = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days);
+    return fromDate.toISOString();
+  }, [dateRange]);
 
-    setLoading(true);
-    setError(null);
+  const { data: overview, error: overviewError, isLoading: loading, mutate: mutateOverview } = useAnalyticsOverview();
+  const { data: pushStats, mutate: mutatePush } = usePushStats(fromStr);
 
-    try {
-      const days = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-      const fromStr = fromDate.toISOString();
+  const { data: eventStats, mutate: mutateEvents } = useSWR<EventStats>(
+    accessToken && storeId ? ['event-stats', storeId, fromStr] : null,
+    () => analyticsApi.getEventStats(accessToken!, storeId, fromStr),
+    { revalidateOnFocus: false },
+  );
 
-      const [overviewRes, pushRes, eventsRes, revenueRes] = await Promise.all([
-        analyticsApi.getOverview(accessToken!, storeId),
-        analyticsApi.getPushStats(accessToken!, storeId, fromStr),
-        analyticsApi.getEventStats(accessToken!, storeId, fromStr),
-        analyticsApi.getRevenueAttribution(accessToken!, storeId, fromStr),
-      ]);
+  const { data: revenueAttribution, mutate: mutateRevenue } = useSWR<RevenueAttribution>(
+    accessToken && storeId ? ['revenue-attribution', storeId, fromStr] : null,
+    () => analyticsApi.getRevenueAttribution(accessToken!, storeId, fromStr),
+    { revalidateOnFocus: false },
+  );
 
-      setOverview(overviewRes);
-      setPushStats(pushRes);
-      setEventStats(eventsRes);
-      setRevenueAttribution(revenueRes);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load analytics');
-    } finally {
-      setLoading(false);
-    }
+  const error = overviewError ? (overviewError instanceof Error ? overviewError.message : 'Failed to load analytics') : null;
+
+  const refreshAll = () => {
+    mutateOverview();
+    mutatePush();
+    mutateEvents();
+    mutateRevenue();
   };
-
-  useEffect(() => {
-    fetchData();
-  }, [accessToken, storeId, dateRange]);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -110,7 +103,7 @@ export default function AnalyticsPage() {
             ))}
           </div>
           <button
-            onClick={fetchData}
+            onClick={refreshAll}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors disabled:opacity-50"
           >
@@ -301,7 +294,7 @@ export default function AnalyticsPage() {
                 <div className="pt-4 border-t border-gray-700">
                   <h4 className="text-sm font-medium text-gray-300 mb-3">By Attribution Model</h4>
                   <div className="space-y-2">
-                    {revenueAttribution.by_model.map((model: { model: string; orders: number; revenue_minor: number }, index: number) => (
+                    {revenueAttribution.by_model.map((model, index) => (
                       <div key={index} className="flex items-center justify-between">
                         <span className="text-sm text-gray-400">{model.model}</span>
                         <div className="flex items-center gap-3">
@@ -372,7 +365,7 @@ export default function AnalyticsPage() {
           <h3 className="text-lg font-medium text-white mb-4">Top Events</h3>
           {eventStats && eventStats.by_type && eventStats.by_type.length > 0 ? (
             <div className="space-y-3">
-              {eventStats.by_type.map((event: { name: string; count: number; percentage: number }, index: number) => (
+              {eventStats.by_type.map((event, index) => (
                 <div key={index} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
                   <span className="text-sm text-gray-300 font-mono">{event.name}</span>
                   <div className="flex items-center gap-2">

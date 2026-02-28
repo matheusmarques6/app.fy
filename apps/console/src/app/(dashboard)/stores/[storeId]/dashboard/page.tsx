@@ -1,50 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useAuth } from '@/lib/supabase/hooks';
 import { useAppStore } from '@/lib/store';
-import { BarChart3, Bell, Users, Smartphone, TrendingUp, RefreshCw } from 'lucide-react';
-import { analyticsApi, devicesApi, campaignsApi, AnalyticsOverview, PushStats, Campaign } from '@/lib/api-client';
+import { Bell, Users, Smartphone, TrendingUp, RefreshCw } from 'lucide-react';
+import { useAnalyticsOverview, usePushStats, useCampaigns } from '@/lib/hooks';
 
 export default function DashboardPage() {
   const params = useParams();
   const storeId = params.storeId as string;
-  const { accessToken } = useAuth();
   const { currentStore } = useAppStore();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
-  const [pushStats, setPushStats] = useState<PushStats | null>(null);
-  const [recentCampaigns, setRecentCampaigns] = useState<Campaign[]>([]);
+  const { data: overview, error: overviewError, isLoading: overviewLoading, mutate: mutateOverview } = useAnalyticsOverview();
+  const { data: pushStats, mutate: mutatePush } = usePushStats();
+  const { data: campaigns = [], mutate: mutateCampaigns } = useCampaigns();
 
-  const fetchData = async () => {
-    if (!accessToken) return;
+  const recentCampaigns = campaigns.slice(0, 5);
+  const loading = overviewLoading;
+  const error = overviewError ? (overviewError instanceof Error ? overviewError.message : 'Failed to load dashboard') : null;
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const [overviewRes, pushRes, campaignsRes] = await Promise.all([
-        analyticsApi.getOverview(accessToken!, storeId),
-        analyticsApi.getPushStats(accessToken!, storeId),
-        campaignsApi.list(accessToken!, storeId),
-      ]);
-
-      setOverview(overviewRes);
-      setPushStats(pushRes);
-      setRecentCampaigns(campaignsRes.slice(0, 5));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-    } finally {
-      setLoading(false);
-    }
+  const refreshAll = () => {
+    mutateOverview();
+    mutatePush();
+    mutateCampaigns();
   };
-
-  useEffect(() => {
-    fetchData();
-  }, [accessToken, storeId]);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -84,7 +62,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <button
-          onClick={fetchData}
+          onClick={refreshAll}
           className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
         >
           <RefreshCw size={18} />

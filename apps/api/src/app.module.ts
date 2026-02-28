@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
@@ -8,6 +9,8 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { StorageModule } from './common/storage/storage.module';
 import { EncryptionModule } from './common/encryption/encryption.module';
+import { LoggerModule } from './common/logger/logger.module';
+import { LoggingInterceptor } from './common/logger/logging.interceptor';
 
 // Modules
 import { AuthModule } from './modules/auth/auth.module';
@@ -57,17 +60,19 @@ import { BuildsModule } from './modules/builds/builds.module';
       },
     ]),
 
-    // BullMQ - parse REDIS_URL or fallback to host/port
+    // BullMQ - parse REDIS_URL with Upstash TLS support (rediss://)
     BullModule.forRoot({
       connection: (() => {
         const redisUrl = process.env.REDIS_URL;
         if (redisUrl) {
+          const isTls = redisUrl.startsWith('rediss://');
           const url = new URL(redisUrl);
           return {
             host: url.hostname,
-            port: parseInt(url.port || '6379', 10),
+            port: parseInt(url.port || (isTls ? '6380' : '6379'), 10),
             password: url.password || undefined,
             username: url.username || undefined,
+            ...(isTls && { tls: {}, enableOfflineQueue: false }),
           };
         }
         return {
@@ -91,6 +96,7 @@ import { BuildsModule } from './modules/builds/builds.module';
     RedisModule,
     StorageModule,
     EncryptionModule,
+    LoggerModule,
     HealthModule,
 
     // Feature modules
@@ -112,6 +118,9 @@ import { BuildsModule } from './modules/builds/builds.module';
     AssetsModule,
     CredentialsModule,
     BuildsModule,
+  ],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
   ],
 })
 export class AppModule {}
