@@ -1,43 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/lib/supabase/hooks';
-import { Plus, Search, Users, RefreshCw, MoreVertical } from 'lucide-react';
+import { Plus, Search, Users, RefreshCw, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { useDebounce, useSegments } from '@/lib/hooks';
+import { toast } from 'sonner';
 import { segmentsApi, Segment } from '@/lib/api-client';
+import { SegmentForm, SegmentFormData } from '@/components/segments/segment-form';
+import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog';
 
 export default function SegmentsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
   const { accessToken } = useAuth();
 
-  const [segments, setSegments] = useState<Segment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
 
-  const fetchSegments = async () => {
-    if (!accessToken) return;
+  const [showForm, setShowForm] = useState(false);
+  const [editingSegment, setEditingSegment] = useState<Segment | undefined>(undefined);
+  const [deletingSegment, setDeletingSegment] = useState<Segment | undefined>(undefined);
 
-    setLoading(true);
-    setError(null);
+  const { data: segments = [], error: segmentsError, isLoading: loading, mutate: mutateSegments } = useSegments();
 
-    try {
-      const data = await segmentsApi.list(accessToken!, storeId);
-      setSegments(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load segments');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSegments();
-  }, [accessToken, storeId]);
+  const error = segmentsError ? (segmentsError instanceof Error ? segmentsError.message : 'Failed to load segments') : null;
 
   const filteredSegments = segments.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase())
+    s.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   const formatDate = (dateStr: string) => {
@@ -47,15 +37,62 @@ export default function SegmentsPage() {
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-900/50 text-green-300';
-      case 'computing':
-        return 'bg-yellow-900/50 text-yellow-300';
-      default:
-        return 'bg-gray-700 text-gray-400';
+  const handleCreate = async (data: SegmentFormData) => {
+    try {
+      await segmentsApi.create(accessToken!, storeId, {
+        name: data.name,
+        description: data.description || undefined,
+        definition: data.definition,
+      });
+      await mutateSegments();
+      setShowForm(false);
+      toast.success('Segment created successfully');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create segment');
+      throw err;
     }
+  };
+
+  const handleUpdate = async (data: SegmentFormData) => {
+    if (!editingSegment) return;
+    try {
+      await segmentsApi.update(accessToken!, storeId, editingSegment.id, {
+        name: data.name,
+        description: data.description || undefined,
+        definition: data.definition,
+      });
+      await mutateSegments();
+      setEditingSegment(undefined);
+      toast.success('Segment updated successfully');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update segment');
+      throw err;
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingSegment) return;
+    try {
+      await segmentsApi.delete(accessToken!, storeId, deletingSegment.id);
+      await mutateSegments();
+      setDeletingSegment(undefined);
+      toast.success('Segment deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete segment');
+      throw err;
+    }
+  };
+
+  const isCalculating = (segment: Segment) => {
+    if (segment.last_evaluated_at) return false;
+    const age = Date.now() - new Date(segment.created_at).getTime();
+    return age < 60_000;
+  };
+
+  const getRulesSummary = (segment: Segment) => {
+    const count = segment.definition?.rules?.length ?? 0;
+    const match = segment.definition?.match === 'any' ? 'OR' : 'AND';
+    return `${count} rule${count !== 1 ? 's' : ''} (${match})`;
   };
 
   return (
@@ -65,7 +102,10 @@ export default function SegmentsPage() {
           <h1 className="text-2xl font-bold text-white">Segments</h1>
           <p className="text-gray-400 mt-1">Create dynamic user segments for targeted messaging</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
           <Plus size={20} />
           <span>New Segment</span>
         </button>
@@ -84,7 +124,7 @@ export default function SegmentsPage() {
           />
         </div>
         <button
-          onClick={fetchSegments}
+          onClick={() => mutateSegments()}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors disabled:opacity-50"
         >
@@ -104,9 +144,8 @@ export default function SegmentsPage() {
           <thead className="bg-gray-800">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Name</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Type</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Rules</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Members</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Status</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Created</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Actions</th>
             </tr>
@@ -114,14 +153,14 @@ export default function SegmentsPage() {
           <tbody className="divide-y divide-gray-800">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
                   <RefreshCw className="animate-spin mx-auto mb-2" size={24} />
                   Loading segments...
                 </td>
               </tr>
             ) : filteredSegments.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={5} className="px-4 py-12 text-center text-gray-500">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-800 flex items-center justify-center">
                     <Users className="text-gray-500" size={24} />
                   </div>
@@ -142,26 +181,41 @@ export default function SegmentsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-sm">
-                    {segment.type}
+                    {getRulesSummary(segment)}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <Users size={14} className="text-gray-400" />
-                      <span className="text-white">{segment.device_count.toLocaleString()}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getStatusColor(segment.status)}`}>
-                      {segment.status}
-                    </span>
+                    {isCalculating(segment) ? (
+                      <div className="flex items-center gap-1 text-yellow-500">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span className="text-xs">Calculating...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <Users size={14} className="text-gray-400" />
+                        <span className="text-white">{segment.member_count.toLocaleString()}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-sm">
                     {formatDate(segment.created_at)}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="p-1 hover:bg-gray-700 rounded">
-                      <MoreVertical size={18} className="text-gray-400" />
-                    </button>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setEditingSegment(segment)}
+                        title="Edit"
+                        className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => setDeletingSegment(segment)}
+                        title="Delete"
+                        className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -169,6 +223,37 @@ export default function SegmentsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Create Modal */}
+      {showForm && accessToken && (
+        <SegmentForm
+          accessToken={accessToken}
+          storeId={storeId}
+          onSubmit={handleCreate}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+
+      {/* Edit Modal */}
+      {editingSegment && accessToken && (
+        <SegmentForm
+          segment={editingSegment}
+          accessToken={accessToken}
+          storeId={storeId}
+          onSubmit={handleUpdate}
+          onClose={() => setEditingSegment(undefined)}
+        />
+      )}
+
+      {/* Delete Confirmation */}
+      {deletingSegment && (
+        <DeleteConfirmDialog
+          title="Delete Segment"
+          description={`Are you sure you want to delete "${deletingSegment.name}"? All memberships will be removed. This action cannot be undone.`}
+          onConfirm={handleDelete}
+          onClose={() => setDeletingSegment(undefined)}
+        />
+      )}
     </div>
   );
 }

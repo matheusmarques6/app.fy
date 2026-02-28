@@ -61,15 +61,39 @@ export interface Device {
   };
 }
 
+export interface SegmentRule {
+  field: string;
+  op: string;
+  value: string | number | boolean | string[];
+}
+
+export interface SegmentDefinition {
+  match: 'all' | 'any';
+  rules: SegmentRule[];
+}
+
 export interface Segment {
   id: string;
   name: string;
   description?: string;
-  type: string;
-  rules: Record<string, unknown>;
-  device_count: number;
-  status: string;
+  definition: SegmentDefinition;
+  member_count: number;
+  last_evaluated_at?: string;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface AutomationNode {
+  id: string;
+  type: 'trigger' | 'delay' | 'push' | 'condition' | 'split';
+  data: Record<string, unknown>;
+  position?: { x: number; y: number };
+}
+
+export interface AutomationEdge {
+  id: string;
+  source: string;
+  target: string;
 }
 
 export interface Automation {
@@ -79,10 +103,11 @@ export interface Automation {
   status: string;
   entry_event: string;
   entry_segment_id?: string;
-  nodes: unknown[];
-  edges: unknown[];
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
   stats: Record<string, unknown>;
   created_at: string;
+  _count?: { runs: number };
 }
 
 export interface Campaign {
@@ -98,6 +123,7 @@ export interface Campaign {
   stats: Record<string, unknown>;
   created_at: string;
   template?: PushTemplate;
+  segment?: { id: string; name: string; member_count: number };
 }
 
 export interface PushTemplate {
@@ -376,7 +402,7 @@ export const segmentsApi = {
       storeId,
     }),
 
-  create: (token: string, storeId: string, data: Partial<Segment>) =>
+  create: (token: string, storeId: string, data: { name: string; description?: string; definition: SegmentDefinition }) =>
     request<Segment>('/segments', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -384,7 +410,7 @@ export const segmentsApi = {
       body: JSON.stringify(data),
     }),
 
-  update: (token: string, storeId: string, segmentId: string, data: Partial<Segment>) =>
+  update: (token: string, storeId: string, segmentId: string, data: { name?: string; description?: string; definition?: SegmentDefinition }) =>
     request<Segment>(`/segments/${segmentId}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` },
@@ -399,8 +425,17 @@ export const segmentsApi = {
       storeId,
     }),
 
-  preview: (token: string, storeId: string, segmentId: string) =>
-    request<{ devices: Device[]; count: number }>(`/segments/${segmentId}/preview`, {
+  previewDefinition: (token: string, storeId: string, definition: SegmentDefinition) =>
+    request<{ estimated_count: number }>('/segments/preview', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      storeId,
+      body: JSON.stringify({ definition }),
+    }),
+
+  refresh: (token: string, storeId: string, segmentId: string) =>
+    request<{ queued: boolean }>(`/segments/${segmentId}/refresh`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       storeId,
     }),
@@ -423,7 +458,14 @@ export const automationsApi = {
       storeId,
     }),
 
-  create: (token: string, storeId: string, data: Partial<Automation>) =>
+  create: (token: string, storeId: string, data: {
+    name: string;
+    description?: string;
+    entry_event: string;
+    entry_segment_id?: string;
+    nodes: AutomationNode[];
+    edges: AutomationEdge[];
+  }) =>
     request<Automation>('/automations', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -431,7 +473,14 @@ export const automationsApi = {
       body: JSON.stringify(data),
     }),
 
-  update: (token: string, storeId: string, automationId: string, data: Partial<Automation>) =>
+  update: (token: string, storeId: string, automationId: string, data: {
+    name?: string;
+    description?: string;
+    entry_event?: string;
+    entry_segment_id?: string;
+    nodes?: AutomationNode[];
+    edges?: AutomationEdge[];
+  }) =>
     request<Automation>(`/automations/${automationId}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` },
@@ -448,7 +497,7 @@ export const automationsApi = {
 
   toggle: (token: string, storeId: string, automationId: string, active: boolean) =>
     request<Automation>(`/automations/${automationId}/toggle`, {
-      method: 'POST',
+      method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
       storeId,
       body: JSON.stringify({ active }),
@@ -490,7 +539,15 @@ export const campaignsApi = {
       body: JSON.stringify(data),
     }),
 
-  update: (token: string, storeId: string, campaignId: string, data: Partial<Campaign>) =>
+  update: (token: string, storeId: string, campaignId: string, data: {
+    name?: string;
+    description?: string;
+    segment_id?: string;
+    title?: Record<string, string>;
+    body?: Record<string, string>;
+    image_url?: string;
+    deeplink?: string;
+  }) =>
     request<Campaign>(`/campaigns/${campaignId}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` },

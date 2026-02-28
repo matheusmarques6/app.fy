@@ -1,43 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/lib/supabase/hooks';
-import { Plus, Search, RefreshCw, Send, Calendar, MoreVertical } from 'lucide-react';
+import { Plus, Search, RefreshCw, Send, Calendar, Pencil, Trash2 } from 'lucide-react';
+import { useDebounce, useCampaigns, useSegments } from '@/lib/hooks';
+import { toast } from 'sonner';
 import { campaignsApi, Campaign } from '@/lib/api-client';
+import { CampaignForm, CampaignFormData } from '@/components/campaigns/campaign-form';
+import { DeleteConfirmDialog } from '@/components/delete-confirm-dialog';
 
 export default function CampaignsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
   const { accessToken } = useAuth();
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
 
-  const fetchCampaigns = async () => {
-    if (!accessToken) return;
+  const [showForm, setShowForm] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | undefined>(undefined);
+  const [deletingCampaign, setDeletingCampaign] = useState<Campaign | undefined>(undefined);
 
-    setLoading(true);
-    setError(null);
+  const { data: campaigns = [], error: campaignsError, isLoading: loading, mutate: mutateCampaigns } = useCampaigns();
+  const { data: segments = [] } = useSegments();
 
-    try {
-      const data = await campaignsApi.list(accessToken!, storeId);
-      setCampaigns(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load campaigns');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCampaigns();
-  }, [accessToken, storeId]);
+  const error = campaignsError ? (campaignsError instanceof Error ? campaignsError.message : 'Failed to load campaigns') : null;
 
   const filteredCampaigns = campaigns.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
+    c.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   const formatDate = (dateStr?: string) => {
@@ -67,6 +58,75 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleCreate = async (data: CampaignFormData) => {
+    try {
+      const created = await campaignsApi.create(accessToken!, storeId, {
+        name: data.name,
+        description: data.description || undefined,
+        segment_id: data.segment_id || undefined,
+        title: { en: data.title },
+        body: { en: data.body },
+      });
+      if (data.scheduled_for) {
+        await campaignsApi.schedule(
+          accessToken!, storeId, created.id, new Date(data.scheduled_for).toISOString(),
+        );
+      }
+      await mutateCampaigns();
+      setShowForm(false);
+      toast.success('Campaign created successfully');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create campaign');
+      throw err;
+    }
+  };
+
+  const handleUpdate = async (data: CampaignFormData) => {
+    if (!editingCampaign) return;
+    try {
+      await campaignsApi.update(
+        accessToken!,
+        storeId,
+        editingCampaign.id,
+        {
+          name: data.name,
+          description: data.description || undefined,
+          segment_id: data.segment_id || undefined,
+          title: data.title ? { en: data.title } : undefined,
+          body: data.body ? { en: data.body } : undefined,
+        },
+      );
+      if (data.scheduled_for) {
+        await campaignsApi.schedule(
+          accessToken!, storeId, editingCampaign.id, new Date(data.scheduled_for).toISOString(),
+        );
+      }
+      await mutateCampaigns();
+      setEditingCampaign(undefined);
+      toast.success('Campaign updated successfully');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update campaign');
+      throw err;
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingCampaign) return;
+    try {
+      await campaignsApi.delete(accessToken!, storeId, deletingCampaign.id);
+      await mutateCampaigns();
+      setDeletingCampaign(undefined);
+      toast.success('Campaign deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete campaign');
+      throw err;
+    }
+  };
+
+  const openEdit = (campaign: Campaign) => {
+    setEditingCampaign(campaign);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -74,7 +134,10 @@ export default function CampaignsPage() {
           <h1 className="text-2xl font-bold text-white">Campaigns</h1>
           <p className="text-gray-400 mt-1">Schedule and manage push notifications</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
           <Plus size={20} />
           <span>New Campaign</span>
         </button>
@@ -93,7 +156,7 @@ export default function CampaignsPage() {
           />
         </div>
         <button
-          onClick={fetchCampaigns}
+          onClick={() => mutateCampaigns()}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors disabled:opacity-50"
         >
@@ -117,7 +180,7 @@ export default function CampaignsPage() {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Type</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Scheduled</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Sent</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Actions</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -131,7 +194,9 @@ export default function CampaignsPage() {
             ) : filteredCampaigns.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-gray-500">
-                  {search ? 'No campaigns match your search.' : 'No campaigns yet. Create your first campaign to get started.'}
+                  {search
+                    ? 'No campaigns match your search.'
+                    : 'No campaigns yet. Create your first campaign to get started.'}
                 </td>
               </tr>
             ) : (
@@ -172,9 +237,24 @@ export default function CampaignsPage() {
                     ) : '-'}
                   </td>
                   <td className="px-4 py-3">
-                    <button className="p-1 hover:bg-gray-700 rounded">
-                      <MoreVertical size={18} className="text-gray-400" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => openEdit(campaign)}
+                        title={campaign.status === 'sent' ? 'View' : 'Edit'}
+                        className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      {campaign.status !== 'sent' && (
+                        <button
+                          onClick={() => setDeletingCampaign(campaign)}
+                          title="Delete"
+                          className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -182,6 +262,35 @@ export default function CampaignsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Create Modal */}
+      {showForm && (
+        <CampaignForm
+          segments={segments}
+          onSubmit={handleCreate}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+
+      {/* Edit Modal */}
+      {editingCampaign && (
+        <CampaignForm
+          campaign={editingCampaign}
+          segments={segments}
+          onSubmit={handleUpdate}
+          onClose={() => setEditingCampaign(undefined)}
+        />
+      )}
+
+      {/* Delete Confirmation */}
+      {deletingCampaign && (
+        <DeleteConfirmDialog
+          title="Delete Campaign"
+          description={`Are you sure you want to delete "${deletingCampaign.name}"? This action cannot be undone.`}
+          onConfirm={handleDelete}
+          onClose={() => setDeletingCampaign(undefined)}
+        />
+      )}
     </div>
   );
 }
