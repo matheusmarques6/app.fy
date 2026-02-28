@@ -304,6 +304,51 @@ export class AnalyticsService {
   }
 
   /**
+   * Campaign leaderboard — campaigns ranked by attributed orders/revenue
+   */
+  async getCampaignLeaderboard(storeId: string, range: DateRange, limit = 10) {
+    const attributions = await this.prisma.attribution.findMany({
+      where: {
+        store_id: storeId,
+        attributed_campaign_id: { not: null },
+        created_at: { gte: range.from, lte: range.to },
+      },
+      include: {
+        order: { select: { total_amount_minor: true, currency: true } },
+      },
+    });
+
+    const byCampaign: Record<string, { orders: number; revenue: number; currency: string }> = {};
+    for (const attr of attributions) {
+      const cid = attr.attributed_campaign_id!;
+      if (!byCampaign[cid]) byCampaign[cid] = { orders: 0, revenue: 0, currency: attr.order.currency };
+      byCampaign[cid].orders++;
+      byCampaign[cid].revenue += attr.order.total_amount_minor;
+    }
+
+    const campaignIds = Object.keys(byCampaign);
+    if (campaignIds.length === 0) return [];
+
+    const campaigns = await this.prisma.campaign.findMany({
+      where: { id: { in: campaignIds } },
+      select: { id: true, name: true },
+    });
+
+    const nameMap = Object.fromEntries(campaigns.map((c) => [c.id, c.name]));
+
+    return Object.entries(byCampaign)
+      .map(([id, stats]) => ({
+        campaign_id: id,
+        campaign_name: nameMap[id] ?? 'Unknown',
+        attributed_orders: stats.orders,
+        attributed_revenue_minor: stats.revenue,
+        currency: stats.currency,
+      }))
+      .sort((a, b) => b.attributed_revenue_minor - a.attributed_revenue_minor)
+      .slice(0, limit);
+  }
+
+  /**
    * Time series: new devices per day
    */
   async getDevicesTimeSeries(storeId: string, range: DateRange): Promise<TimeSeriesPoint[]> {

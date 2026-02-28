@@ -99,6 +99,20 @@ export class AnalyticsController {
     return this.analyticsService.getRevenueAttribution(storeId, range);
   }
 
+  @Get('campaigns/leaderboard')
+  async getCampaignLeaderboard(
+    @Headers('x-store-id') storeId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!storeId) {
+      throw new BadRequestException('X-Store-Id header is required');
+    }
+    const range = this.parseRange(from, to);
+    return this.analyticsService.getCampaignLeaderboard(storeId, range, limit ? parseInt(limit, 10) : 10);
+  }
+
   @Get('automations')
   async getAutomationStats(
     @Headers('x-store-id') storeId: string,

@@ -16,6 +16,7 @@ import { PushModule } from '../modules/push/push.module';
 import { EventsProcessor } from './processors/events.processor';
 import { MetricsProcessor } from './processors/metrics.processor';
 import { SegmentProcessor } from './processors/segment.processor';
+import { SegmentFullRefreshProcessor } from './processors/segment-full-refresh.processor';
 import { AutomationProcessor } from './processors/automation.processor';
 import { PushProcessor } from './processors/push.processor';
 import { CampaignProcessor } from './processors/campaign.processor';
@@ -38,12 +39,14 @@ import { CodemagicService } from '../modules/builds/codemagic.service';
       connection: (() => {
         const redisUrl = process.env.REDIS_URL;
         if (redisUrl) {
+          const isTls = redisUrl.startsWith('rediss://');
           const url = new URL(redisUrl);
           return {
             host: url.hostname,
-            port: parseInt(url.port || '6379', 10),
+            port: parseInt(url.port || (isTls ? '6380' : '6379'), 10),
             password: url.password || undefined,
             username: url.username || undefined,
+            ...(isTls && { tls: {}, enableOfflineQueue: false }),
           };
         }
         return {
@@ -58,6 +61,7 @@ import { CodemagicService } from '../modules/builds/codemagic.service';
       { name: QUEUE_NAMES.EVENTS_INGEST },
       { name: QUEUE_NAMES.METRICS_UPDATE },
       { name: QUEUE_NAMES.SEGMENT_REFRESH },
+      { name: QUEUE_NAMES.SEGMENT_FULL_REFRESH },
       { name: QUEUE_NAMES.AUTOMATION_EVAL },
       { name: QUEUE_NAMES.PUSH_SEND },
       { name: QUEUE_NAMES.CAMPAIGN_SEND },
@@ -76,6 +80,7 @@ import { CodemagicService } from '../modules/builds/codemagic.service';
     EventsProcessor,
     MetricsProcessor,
     SegmentProcessor,
+    SegmentFullRefreshProcessor,
     AutomationProcessor,
     PushProcessor,
     CampaignProcessor,

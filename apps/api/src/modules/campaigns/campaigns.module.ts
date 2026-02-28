@@ -11,7 +11,7 @@ import { AuthModule } from '../auth/auth.module';
     PrismaModule,
     AuthModule,
     BullModule.registerQueue({
-      name: QUEUE_NAMES.CAMPAIGN_SCHEDULER,
+      name: QUEUE_NAMES.CAMPAIGN_SEND,
     }),
   ],
   controllers: [CampaignsController],

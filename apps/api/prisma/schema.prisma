@@ -446,10 +446,11 @@ model Segment {
   name         String
   description  String?
   definition   Json     // DSL rules
-  member_count Int      @default(0)
-  is_system    Boolean  @default(false)
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  member_count      Int       @default(0)
+  is_system         Boolean   @default(false)
+  last_evaluated_at DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   // Relations
   store       Store               @relation(fields: [store_id], references: [id], onDelete: Cascade)

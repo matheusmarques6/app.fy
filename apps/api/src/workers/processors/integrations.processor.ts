@@ -300,21 +300,29 @@ export class IntegrationsProcessor extends WorkerHost {
       );
 
       if (attributedDelivery) {
-        // Store attribution in order metadata
-        const existingMetadata = (order.metadata as Record<string, unknown>) || {};
-        await this.prisma.order.update({
-          where: { id: orderId },
-          data: {
-            metadata: {
-              ...existingMetadata,
-              attribution: {
-                type: 'push',
-                delivery_id: attributedDelivery.id,
-                campaign_id: attributedDelivery.campaign_id,
-                automation_id: attributedDelivery.automation_id,
-                attributed_at: new Date().toISOString(),
-              },
+        // Create Attribution record (upsert to avoid duplicates)
+        await this.prisma.attribution.upsert({
+          where: {
+            store_id_order_id_model: {
+              store_id: order.store_id,
+              order_id: orderId,
+              model: 'last_click',
             },
+          },
+          create: {
+            store_id: order.store_id,
+            order_id: orderId,
+            model: 'last_click',
+            attributed_delivery_id: attributedDelivery.id,
+            attributed_campaign_id: attributedDelivery.campaign_id ?? null,
+            attributed_automation_id: attributedDelivery.automation_id ?? null,
+            window_hours: ATTRIBUTION_WINDOW_HOURS,
+            score: 1.0,
+          },
+          update: {
+            attributed_delivery_id: attributedDelivery.id,
+            attributed_campaign_id: attributedDelivery.campaign_id ?? null,
+            attributed_automation_id: attributedDelivery.automation_id ?? null,
           },
         });
 

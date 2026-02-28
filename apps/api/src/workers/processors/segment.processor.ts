@@ -2,13 +2,17 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { QUEUE_NAMES } from '@appfy/shared';
+import { QUEUE_NAMES, SEGMENT_REFRESH_BATCH_SIZE } from '@appfy/shared';
 import type { SegmentDefinition, SegmentRule } from '@appfy/shared';
 
 interface SegmentRefreshJob {
   storeId: string;
   deviceId: string;
   changedFields: string[];
+}
+
+interface SegmentFullRefreshJob {
+  segmentId: string;
 }
 
 @Processor(QUEUE_NAMES.SEGMENT_REFRESH)

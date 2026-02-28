@@ -9,10 +9,12 @@ export class RedisService implements OnModuleDestroy {
 
   constructor(private configService: ConfigService) {
     const redisUrl = this.configService.get<string>('REDIS_URL', 'redis://localhost:6379');
+    const isTls = redisUrl.startsWith('rediss://');
 
     this.client = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
+      ...(isTls && { tls: {}, enableOfflineQueue: false }),
       retryStrategy: (times) => {
         if (times > 3) {
           this.logger.error('Redis connection failed after 3 retries');

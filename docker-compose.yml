@@ -20,6 +20,8 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local Redis for development only.
+  # Production uses Upstash Redis (rediss://): set REDIS_URL=rediss://default:[token]@[host].upstash.io:6380
   redis:
     image: redis:7-alpine
     container_name: appfy-redis

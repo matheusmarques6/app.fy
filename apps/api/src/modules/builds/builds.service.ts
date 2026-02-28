@@ -11,6 +11,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { AppsService } from '../apps/apps.service';
 import { CredentialsService } from '../credentials/credentials.service';
+import { CodemagicService } from './codemagic.service';
 import { QUEUE_NAMES } from '@appfy/shared';
 import { CreateBuildDto, BuildResponse, BuildJobData } from './dto';
 
@@ -42,6 +43,7 @@ export class BuildsService {
     private readonly storage: StorageService,
     private readonly appsService: AppsService,
     private readonly credentialsService: CredentialsService,
+    private readonly codemagicService: CodemagicService,
     @InjectQueue(QUEUE_NAMES.BUILD)
     private readonly buildQueue: Queue,
   ) {}
@@ -280,7 +282,7 @@ export class BuildsService {
     await this.prisma.buildJob.update({
       where: { id: buildId },
       data: {
-        status: 'failed',
+        status: 'cancelled',
         error_message: 'Cancelled by user',
         completed_at: new Date(),
       },
@@ -288,10 +290,19 @@ export class BuildsService {
 
     await this.prisma.appVersion.update({
       where: { id: build.app_version_id },
-      data: { status: 'failed' },
+      data: { status: 'cancelled' },
     });
 
-    // TODO: Cancel external build if running
+    // Cancel external Codemagic build if it's running and has an external ID
+    if (build.external_build_id && build.status === 'running') {
+      try {
+        await this.codemagicService.cancelBuild(build.external_build_id);
+        this.logger.log(`Codemagic build ${build.external_build_id} cancelled`);
+      } catch (error) {
+        this.logger.error(`Failed to cancel Codemagic build ${build.external_build_id}:`, error);
+        // Do not re-throw: local cancel succeeded; Codemagic failure is non-blocking
+      }
+    }
 
     this.logger.log(`Build cancelled: ${buildId}`);
   }

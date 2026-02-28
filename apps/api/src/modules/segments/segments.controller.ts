@@ -103,6 +103,17 @@ export class SegmentsController {
     );
   }
 
+  @Post(':id/refresh')
+  async triggerRefresh(
+    @Headers('x-store-id') storeId: string,
+    @Param('id') id: string,
+  ) {
+    if (!storeId) {
+      throw new BadRequestException('X-Store-Id header is required');
+    }
+    return this.segmentsService.triggerRefresh(storeId, id);
+  }
+
   @Post('preview')
   async previewCount(
     @Headers('x-store-id') storeId: string,

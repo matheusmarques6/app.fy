@@ -39,7 +39,7 @@ type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'paused' | 'c
 export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue(QUEUE_NAMES.CAMPAIGN_SCHEDULER) private readonly campaignQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.CAMPAIGN_SEND) private readonly campaignQueue: Queue,
   ) {}
 
   async findAll(storeId: string, status?: CampaignStatus) {
@@ -266,16 +266,17 @@ export class CampaignsService {
       throw new BadRequestException('Can only send draft or scheduled campaigns');
     }
 
-    // Update campaign status
+    // Mark as scheduled so the processor can pick it up and transition to sending → sent
     await this.prisma.campaign.update({
       where: { id: campaignId },
       data: {
-        status: 'sending',
+        status: 'scheduled',
+        scheduled_for: new Date(),
         updated_at: new Date(),
       },
     });
 
-    // Queue for immediate sending
+    // Queue for immediate sending (no delay)
     await this.campaignQueue.add(
       'send',
       { campaignId, storeId },

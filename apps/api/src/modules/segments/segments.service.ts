@@ -1,6 +1,9 @@
 // @ts-nocheck
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { QUEUE_NAMES } from '@appfy/shared';
 import type { SegmentDefinition, SegmentRule } from '@appfy/shared';
 
 interface CreateSegmentDto {
@@ -17,7 +20,10 @@ interface UpdateSegmentDto {
 
 @Injectable()
 export class SegmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue(QUEUE_NAMES.SEGMENT_FULL_REFRESH) private readonly fullRefreshQueue: Queue,
+  ) {}
 
   async findAll(storeId: string) {
     return this.prisma.segment.findMany({
@@ -74,9 +80,12 @@ export class SegmentsService {
       },
     });
 
-    // Trigger async membership evaluation
-    // This would queue a job to evaluate all devices against the new segment
-    // await this.queueService.add(QUEUE_NAMES.SEGMENT_FULL_REFRESH, { segmentId: segment.id });
+    // Trigger async membership evaluation for all devices
+    await this.fullRefreshQueue.add(
+      'full-refresh',
+      { segmentId: segment.id },
+      { jobId: `segment-full-refresh-${segment.id}` },
+    );
 
     return segment;
   }
@@ -97,6 +106,18 @@ export class SegmentsService {
         updated_at: new Date(),
       },
     });
+  }
+
+  async triggerRefresh(storeId: string, segmentId: string) {
+    await this.findOne(storeId, segmentId);
+
+    await this.fullRefreshQueue.add(
+      'full-refresh',
+      { segmentId },
+      { jobId: `segment-full-refresh-${segmentId}-${Date.now()}` },
+    );
+
+    return { queued: true };
   }
 
   async delete(storeId: string, segmentId: string) {
