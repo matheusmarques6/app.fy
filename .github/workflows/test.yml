@@ -1,0 +1,108 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api-tests:
+    name: API Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: appfy
+          POSTGRES_PASSWORD: appfy_test_password
+          POSTGRES_DB: appfy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://appfy:appfy_test_password@localhost:5432/appfy_test?schema=public
+      DIRECT_URL: postgresql://appfy:appfy_test_password@localhost:5432/appfy_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-jwt-secret-for-ci
+      JWT_ISSUER: appfy-auth
+      SUPABASE_JWT_SECRET: test-supabase-jwt-secret
+      SUPABASE_URL: https://test.supabase.co
+      SUPABASE_ANON_KEY: test-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+      ENCRYPTION_SECRET: test-encryption-secret-32chars!!
+      ENCRYPTION_SALT: appfy-enc-test
+      EMAIL_HASH_SALT: test-email-hash-salt
+      NODE_ENV: test
+      LOG_LEVEL: error
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @appfy/api run db:generate
+
+      - name: Push schema to test DB
+        run: pnpm --filter @appfy/api run db:push
+
+      - name: Build shared package
+        run: pnpm --filter @appfy/shared build
+
+      - name: Run unit tests
+        run: pnpm --filter @appfy/api test
+
+      - name: Run E2E tests
+        run: pnpm --filter @appfy/api test:e2e
+
+  console-lint:
+    name: Console Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @appfy/shared build
+
+      - name: Lint console
+        run: pnpm --filter @appfy/console lint
