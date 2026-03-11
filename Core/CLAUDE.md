@@ -90,79 +90,373 @@ SaaS que transforma lojas de e-commerce em aplicativos móveis nativos (1 app po
 
 ## Repository Layout
 
+**Decisões estruturais (2026-03-11, consenso Arquiteto + QA + Dev):**
+- `apps/` = deployables (processos em produção). `packages/` = libraries (código compartilhado).
+- API é deployable → `apps/api`, não `packages/api`.
+- Workers são deployables → `apps/workers/`, não top-level `workers/`.
+- Lógica de domínio compartilhada (API + workers) → `packages/core` (novo).
+- Notificações absorvidas em `packages/core/notifications/` (não pacote separado).
+- API organizada por domínio (`domains/`), não por layer técnica.
+- Testes unitários co-locados (`.spec.ts`). Testes cross-workspace em `packages/test-utils`.
+- Source imports em dev (sem rebuild intermediário), build só para CI/produção.
+
 ```
 /
+├── .github/
+│   ├── workflows/              # CI/CD (GitHub Actions)
+│   │   ├── ci.yml              # Pipeline 7 gates
+│   │   └── deploy.yml          # Deploy (Vercel, Railway)
+│   ├── CODEOWNERS
+│   └── pull_request_template.md
+│
 ├── apps/
-│   ├── web/                    # Painel admin (Next.js)
-│   │   ├── src/
-│   │   │   ├── app/            # App Router pages
-│   │   │   ├── components/     # UI components
-│   │   │   ├── hooks/          # Feature-specific hooks
-│   │   │   ├── lib/            # Shared utilities
-│   │   │   ├── services/       # API service layer
-│   │   │   └── types/          # TypeScript types
-│   │   └── tests/
+│   ├── api/                    # Hono HTTP server — @appfy/api (deployable)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── vitest.config.ts
+│   │   └── src/
+│   │       ├── app.ts          # Hono app factory (cria app com middlewares)
+│   │       ├── server.ts       # Node.js serve() entrypoint
+│   │       ├── env.ts          # Zod env validation (fail fast no startup)
+│   │       ├── middleware/     # Middleware chain (ordem importa)
+│   │       │   ├── auth.ts
+│   │       │   ├── tenant.ts
+│   │       │   ├── roles.ts
+│   │       │   ├── validate.ts
+│   │       │   ├── logger.ts
+│   │       │   ├── error-handler.ts
+│   │       │   └── rate-limit.ts
+│   │       ├── domains/        # Organizado por domínio (não por layer)
+│   │       │   ├── auth/
+│   │       │   │   ├── routes.ts       # Declaração de rotas Hono
+│   │       │   │   ├── handlers.ts     # Lógica de "cola" (request → service → response)
+│   │       │   │   ├── schemas.ts      # Zod input validation (HTTP-specific)
+│   │       │   │   └── index.ts
+│   │       │   ├── tenants/
+│   │       │   │   ├── routes.ts
+│   │       │   │   ├── handlers.ts
+│   │       │   │   ├── schemas.ts
+│   │       │   │   └── index.ts
+│   │       │   ├── notifications/
+│   │       │   │   ├── routes.ts
+│   │       │   │   ├── handlers.ts
+│   │       │   │   ├── schemas.ts
+│   │       │   │   └── index.ts
+│   │       │   ├── app-users/
+│   │       │   ├── devices/
+│   │       │   ├── automations/
+│   │       │   ├── analytics/
+│   │       │   ├── billing/
+│   │       │   ├── integrations/       # OAuth callbacks, webhook receivers
+│   │       │   └── app-configs/
+│   │       └── lib/
+│   │           ├── create-dependencies.ts  # Factory DI (agrupado por domínio)
+│   │           ├── errors.ts               # Erros HTTP (herdam de core errors)
+│   │           └── types.ts                # AppEnv, Dependencies
 │   │
-│   └── mobile/                 # Template Capacitor (base para builds)
+│   ├── console/                # Painel admin — @appfy/console (Next.js 14, deployable)
+│   │   ├── package.json
+│   │   ├── next.config.js
+│   │   ├── tailwind.config.ts
+│   │   ├── tsconfig.json
+│   │   ├── .env.example
+│   │   └── src/
+│   │       ├── app/            # App Router pages
+│   │       ├── components/
+│   │       │   ├── ui/         # shadcn/ui primitives
+│   │       │   └── features/   # Feature-specific composites
+│   │       ├── hooks/
+│   │       ├── lib/
+│   │       │   ├── api-client.ts
+│   │       │   └── supabase.ts
+│   │       ├── stores/         # Zustand stores
+│   │       └── types/
+│   │
+│   ├── workers/                # BullMQ workers — @appfy/workers (deployable, Railway)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── vitest.config.ts
+│   │   ├── .env.example
+│   │   └── src/
+│   │       ├── env.ts          # Zod env validation (workers)
+│   │       ├── push/           # Entrypoint: node dist/push/index.js
+│   │       │   ├── index.ts
+│   │       │   ├── processor.ts
+│   │       │   └── handlers/
+│   │       ├── ingestion/      # Entrypoint: node dist/ingestion/index.js
+│   │       │   ├── index.ts
+│   │       │   ├── processor.ts
+│   │       │   └── handlers/
+│   │       ├── analytics/      # Entrypoint: node dist/analytics/index.js
+│   │       │   ├── index.ts
+│   │       │   ├── processor.ts
+│   │       │   └── handlers/
+│   │       └── shared/         # Queue setup, redis connection, graceful shutdown
+│   │           └── worker-factory.ts
+│   │
+│   └── mobile/                 # Template Capacitor — @appfy/mobile
+│       ├── package.json
+│       ├── capacitor.config.ts
 │       ├── src/                # WebView wrapper code
 │       ├── android/            # Android shell
 │       ├── ios/                # iOS shell
 │       └── configs/            # JSON configs por tenant (gerados)
 │
 ├── packages/
-│   ├── api/                    # API server (Hono)
-│   │   ├── src/
-│   │   │   ├── app.ts          # Hono app factory (cria app com middlewares)
-│   │   │   ├── routes/         # Route handlers agrupados por domínio
-│   │   │   ├── middleware/     # Auth, tenant, roles, validation, logging
-│   │   │   ├── repositories/  # Data access layer (SEMPRE filtra tenant_id)
-│   │   │   ├── services/      # Business logic (pura, sem HTTP)
-│   │   │   └── factories/     # DI manual via factory functions
-│   │   └── test/               # Helpers, builders, fixtures
+│   ├── core/                   # Lógica de domínio compartilhada — @appfy/core
+│   │   ├── package.json        # Conditional exports: source (dev) / dist (prod)
+│   │   ├── tsconfig.json
+│   │   ├── vitest.config.ts
+│   │   └── src/
+│   │       ├── index.ts        # Barrel export (re-exporta todos os domínios)
+│   │       ├── errors.ts       # Erros de domínio (TenantNotFoundError, etc.)
+│   │       ├── notifications/
+│   │       │   ├── service.ts
+│   │       │   ├── service.spec.ts         # Teste unitário co-locado
+│   │       │   ├── repository.ts
+│   │       │   ├── repository.spec.ts
+│   │       │   ├── types.ts
+│   │       │   ├── index.ts
+│   │       │   ├── pipeline/               # Steps do pipeline
+│   │       │   │   ├── generate.ts
+│   │       │   │   ├── validate.ts
+│   │       │   │   ├── schedule.ts
+│   │       │   │   ├── send.ts
+│   │       │   │   ├── track.ts
+│   │       │   │   ├── pipeline.integrity.spec.ts  # Verifica que steps não pulam
+│   │       │   │   └── index.ts            # Pipeline orchestrator
+│   │       │   ├── flows/
+│   │       │   │   ├── cart-abandoned.flow.ts
+│   │       │   │   ├── pix-recovery.flow.ts
+│   │       │   │   ├── boleto-recovery.flow.ts
+│   │       │   │   ├── welcome.flow.ts
+│   │       │   │   ├── checkout-abandoned.flow.ts
+│   │       │   │   ├── order-confirmed.flow.ts
+│   │       │   │   ├── tracking-created.flow.ts
+│   │       │   │   ├── browse-abandoned.flow.ts
+│   │       │   │   └── upsell.flow.ts
+│   │       │   └── templates/
+│   │       │       ├── cart-abandoned.template.ts
+│   │       │       └── ...
+│   │       ├── push/
+│   │       │   ├── push-provider.interface.ts
+│   │       │   ├── onesignal.provider.ts
+│   │       │   ├── push.service.ts
+│   │       │   └── index.ts
+│   │       ├── app-users/
+│   │       │   ├── service.ts
+│   │       │   ├── repository.ts
+│   │       │   └── index.ts
+│   │       ├── devices/
+│   │       │   ├── service.ts
+│   │       │   ├── repository.ts
+│   │       │   └── index.ts
+│   │       ├── tenants/
+│   │       │   ├── service.ts
+│   │       │   ├── repository.ts
+│   │       │   └── index.ts
+│   │       ├── billing/
+│   │       │   ├── service.ts
+│   │       │   ├── stripe.provider.ts
+│   │       │   └── index.ts
+│   │       ├── automations/
+│   │       │   ├── service.ts
+│   │       │   ├── repository.ts
+│   │       │   └── index.ts
+│   │       ├── analytics/
+│   │       │   ├── service.ts
+│   │       │   ├── repository.ts
+│   │       │   └── index.ts
+│   │       ├── encryption/
+│   │       │   └── service.ts              # AES-256-GCM
+│   │       ├── queues/                     # Contratos de fila (API enfileira, workers processam)
+│   │       │   ├── push-dispatch.queue.ts  # Nome, payload type, job options
+│   │       │   ├── data-ingestion.queue.ts
+│   │       │   ├── analytics.queue.ts
+│   │       │   └── index.ts
+│   │       ├── common/                     # Utils compartilhados entre domínios do core
+│   │       │   ├── pagination.ts
+│   │       │   └── date.ts
+│   │       └── repositories/
+│   │           ├── base.repository.ts      # tenantId enforcement (cobertura 100%)
+│   │           └── base.repository.spec.ts
 │   │
-│   ├── notifications/          # Sistema de notificações
-│   │   ├── pipeline/           # Geração → Validação → Agendamento → Envio → Tracking → Feedback
-│   │   ├── flows/              # Fluxos automáticos (carrinho, PIX, boleto, welcome, etc.)
-│   │   ├── templates/          # Templates de notificação com variáveis (MVP)
-│   │   ├── push/               # OneSignal integration (1 app por tenant)
-│   │   └── inapp/              # Notificações in-app (popups)
+│   ├── integrations/           # Adapters de plataforma — @appfy/integrations
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── vitest.config.ts
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── platform-adapter.interface.ts
+│   │       ├── shopify/
+│   │       │   ├── adapter.ts
+│   │       │   ├── types.ts
+│   │       │   └── webhooks.ts
+│   │       ├── nuvemshop/
+│   │       │   ├── adapter.ts
+│   │       │   ├── types.ts
+│   │       │   └── webhooks.ts
+│   │       └── klaviyo/
+│   │           ├── adapter.ts
+│   │           └── types.ts
 │   │
-│   ├── integrations/           # Adapter pattern por plataforma
-│   │   ├── shopify/            # Shopify Admin API adapter
-│   │   ├── nuvemshop/          # Nuvemshop API adapter
-│   │   ├── klaviyo/            # Klaviyo API adapter (read-only)
-│   │   └── types.ts            # Interface comum: { products, orders, abandonedCarts }
+│   ├── db/                     # Drizzle schema, migrations, seed — @appfy/db
+│   │   ├── package.json
+│   │   ├── drizzle.config.ts
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts        # Exports: schema, client factory
+│   │       ├── client.ts       # createDrizzleClient()
+│   │       ├── test-client.ts  # Drizzle client para banco de teste
+│   │       ├── test-utils.ts   # Truncate, seed mínimo, tenant factory
+│   │       ├── schema/         # 1 arquivo por tabela
+│   │       │   ├── tenants.ts
+│   │       │   ├── users.ts
+│   │       │   ├── memberships.ts
+│   │       │   ├── notifications.ts
+│   │       │   ├── notification-deliveries.ts
+│   │       │   ├── app-users.ts
+│   │       │   ├── devices.ts
+│   │       │   ├── app-events.ts
+│   │       │   ├── app-configs.ts
+│   │       │   ├── automation-configs.ts
+│   │       │   ├── plans.ts
+│   │       │   ├── audit-log.ts
+│   │       │   ├── app-user-segments.ts
+│   │       │   ├── app-user-products.ts
+│   │       │   └── index.ts    # Re-exports all schemas
+│   │       ├── migrations/
+│   │       └── seed/
+│   │           └── seed.ts
 │   │
-│   ├── db/                     # Drizzle schema, migrations, seed
-│   │   ├── schema/
-│   │   ├── migrations/
-│   │   └── seed/
+│   ├── shared/                 # Types puros, constants, utils — @appfy/shared (ZERO lógica)
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── constants/
+│   │       │   ├── plans.ts
+│   │       │   ├── roles.ts
+│   │       │   ├── flow-types.ts
+│   │       │   └── event-types.ts
+│   │       ├── types/
+│   │       │   ├── auth.ts
+│   │       │   ├── tenant.ts
+│   │       │   └── common.ts
+│   │       └── utils/
+│   │           ├── format.ts
+│   │           └── date.ts
 │   │
-│   └── shared/                 # Tipos, utils, constants compartilhados
+│   └── test-utils/             # Infraestrutura de testes — @appfy/test-utils
+│       ├── package.json
+│       ├── tsconfig.json
+│       └── src/
+│           ├── index.ts
+│           ├── builders/       # Object builders (resistentes a mudanças de schema)
+│           │   ├── tenant.builder.ts
+│           │   ├── user.builder.ts
+│           │   ├── notification.builder.ts
+│           │   └── device.builder.ts
+│           ├── helpers/
+│           │   ├── setup-db.ts         # Migrations + seed em banco de teste
+│           │   ├── auth-helper.ts      # Gera JWT válido para testes
+│           │   ├── rls-asserter.ts     # Helpers para testar RLS
+│           │   └── request-builder.ts  # Wrapper para Hono app.request()
+│           ├── isolation/              # Testes de isolamento multi-tenant (G6)
+│           │   ├── tenant-isolation.spec.ts
+│           │   └── rls-policies.spec.ts
+│           └── architecture/           # Testes de conformidade estrutural
+│               └── repository-extends-base.spec.ts
 │
-├── workers/
-│   ├── push-dispatcher/        # Worker BullMQ: batching, retry, dead letter
-│   ├── data-ingestion/         # Worker: ingestão de dados Klaviyo, Shopify webhooks
-│   └── analytics/              # Worker: processamento de métricas
+├── scripts/                    # Scripts de setup e operação
+│   ├── setup.sh                # pnpm install + docker up + db push + seed
+│   └── reset-db.sh             # Drop + recreate + migrate + seed
 │
 ├── infra/
-│   ├── ci/                     # GitHub Actions workflows
-│   ├── fastlane/               # Build pipeline de apps (Fase 2)
-│   └── sentry/                 # Config Sentry (source maps, alerts)
+│   ├── sentry/                 # Config Sentry (source maps, alerts)
+│   └── fastlane/               # Build pipeline de apps (Fase 2)
 │
-├── docs/
-│   ├── architecture.md
-│   ├── onboarding.md
-│   └── api.md
+├── .vscode/
+│   ├── settings.json           # Excluir node_modules, dist, .turbo
+│   └── extensions.json         # Biome, Tailwind IntelliSense
 │
-├── CLAUDE.md                   # Este arquivo
-├── biome.json                  # Config Biome (lint + format)
-├── drizzle.config.ts
-├── package.json                # Monorepo root (workspaces)
-└── turbo.json                  # Turborepo config
+├── .env.example                # Referência global
+├── biome.json                  # Config Biome raiz (herdado por todos)
+├── tsconfig.base.json          # Config TS base (herdado por todos)
+├── vitest.workspace.ts         # Orquestra projects: unit / integration / isolation
+├── package.json                # Monorepo root (workspaces, scripts de atalho)
+├── pnpm-workspace.yaml         # Workspace definitions
+├── turbo.json                  # Pipeline com dependsOn explícitos
+├── docker-compose.yml          # PostgreSQL 16, Redis 7 (com healthcheck)
+├── docker-compose.test.yml     # Banco teste (:5433) + Redis teste (:6380)
+└── CLAUDE.md
 ```
 
-**Nota:** `packages/ai/` não existe no MVP. IA generativa entra na Fase 2. MVP usa templates com variáveis em `packages/notifications/templates/`.
+### Grafo de Dependências (sem ciclos)
+
+```
+apps/console ────► packages/shared
+
+apps/api ────────► packages/core
+                   packages/integrations
+                   packages/db
+                   packages/shared
+
+apps/workers ────► packages/core
+                   packages/integrations
+                   packages/db
+                   packages/shared
+
+packages/core ───► packages/db
+                   packages/shared
+
+packages/integrations ► packages/core (types de domínio)
+                        packages/shared
+
+packages/db ─────► packages/shared (minimal)
+
+packages/shared ─► (nenhuma dependência interna — folha do grafo)
+
+packages/test-utils ► packages/core
+                      packages/db
+                      packages/shared
+```
+
+### Conditional Exports (dev sem rebuild)
+
+Todos os packages internos usam conditional exports no `package.json` para evitar rebuild durante desenvolvimento:
+
+```jsonc
+// packages/core/package.json (exemplo — aplicar a todos os packages)
+{
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",    // Dev: aponta para source
+      "default": "./dist/index.js"   // Prod/CI: aponta para build
+    }
+  }
+}
+```
+
+### Convenções de Teste
+
+| Tipo | Sufixo | Gate CI | Localização |
+|------|--------|---------|-------------|
+| Unitário | `.spec.ts` | G4 | Co-locado (junto ao arquivo fonte) |
+| Integração | `.integration.spec.ts` | G5 | Co-locado ou `packages/test-utils` |
+| Isolamento | `.isolation.spec.ts` | G6 | `packages/test-utils/src/isolation/` |
+| E2E | `.e2e.spec.ts` | G5 | `packages/test-utils/src/e2e/` |
+| Arquitetura | `.arch.spec.ts` | G4 | `packages/test-utils/src/architecture/` |
+
+### Regras Estruturais (verificadas por teste de arquitetura)
+
+1. Todo `*.repository.ts` em `packages/core` **DEVE** estender `BaseRepository`
+2. Toda tabela com `tenant_id` **DEVE** ter teste de isolamento (4 cenários: SELECT/SELECT/UPDATE/DELETE cross-tenant)
+3. `base.repository.ts` **DEVE** ter cobertura de 100%
+4. Pipeline de notificações **DEVE** ter teste de integridade (steps não podem ser pulados)
+5. Builders, não fixtures estáticas — resistente a mudanças de schema
+
+**Nota:** `packages/ai/` não existe no MVP. IA generativa entra na Fase 2. MVP usa templates com variáveis em `packages/core/notifications/templates/`.
 
 ---
 
@@ -440,13 +734,13 @@ Sem particionamento no dia 1 (Drizzle não suporta nativamente).
 A cadeia de middleware é explícita e composável. Sem decorators, sem DI container.
 
 ```typescript
-// packages/api/src/app.ts
+// apps/api/src/app.ts
 import { Hono } from 'hono'
 import { authMiddleware } from './middleware/auth'
 import { tenantMiddleware } from './middleware/tenant'
 import { requestLogger } from './middleware/logger'
 import { errorHandler } from './middleware/error'
-import { createDependencies } from './factories/dependencies'
+import { createDependencies } from './lib/create-dependencies'
 
 type AppEnv = {
   Variables: {
@@ -480,7 +774,7 @@ export function createApp(deps = createDependencies()) {
 ```
 
 ```typescript
-// packages/api/src/middleware/auth.ts
+// apps/api/src/middleware/auth.ts
 import { createMiddleware } from 'hono/factory'
 
 export function authMiddleware() {
@@ -498,7 +792,7 @@ export function authMiddleware() {
 ```
 
 ```typescript
-// packages/api/src/middleware/tenant.ts
+// apps/api/src/middleware/tenant.ts
 export function tenantMiddleware() {
   return createMiddleware<AppEnv>(async (c, next) => {
     const tenantId = c.req.header('X-Tenant-Id')
@@ -515,7 +809,7 @@ export function tenantMiddleware() {
 ```
 
 ```typescript
-// packages/api/src/middleware/roles.ts
+// apps/api/src/middleware/roles.ts
 export function requireRoles(...roles: Array<'owner' | 'editor' | 'viewer'>) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const userRole = c.get('userRole')
@@ -531,7 +825,7 @@ app.delete('/api/notifications/:id', requireRoles('owner', 'editor'), handler)
 ```
 
 ```typescript
-// packages/api/src/middleware/validate.ts
+// apps/api/src/middleware/validate.ts
 import { ZodSchema } from 'zod'
 
 export function validate<T>(schema: ZodSchema<T>) {
@@ -550,7 +844,7 @@ export function validate<T>(schema: ZodSchema<T>) {
 ### Factory Pattern — DI Manual
 
 ```typescript
-// packages/api/src/factories/dependencies.ts
+// apps/api/src/lib/create-dependencies.ts
 export function createDependencies(overrides?: Partial<Dependencies>) {
   const db = overrides?.db ?? createDrizzleClient()
   const redis = overrides?.redis ?? createRedisClient()
@@ -682,7 +976,7 @@ Controlado por plano do cliente via `automation_configs`. Tenant configura limit
 MVP usa templates pré-escritos com variáveis. Sem IA generativa.
 
 ```typescript
-// packages/notifications/templates/cart-abandoned.ts
+// packages/core/src/notifications/templates/cart-abandoned.ts
 export const cartAbandonedTemplate = {
   title: "{{store_name}} - Você esqueceu algo! 🛒",
   body: "{{product_name}} está esperando por você. Finalize sua compra agora!",
@@ -781,17 +1075,129 @@ Cada flow usa `automation_configs` para: `is_enabled`, `delay_seconds`, `templat
 
 ## CI Pipeline (Roda em CADA commit)
 
+**Este é o mapeamento canônico dos gates. Core/CLAUDE.md é a fonte única de verdade.**
+
 ```
-1. biome check (lint + format)
-2. tsc --noEmit (type check)
-3. pnpm audit (vulnerabilidades de dependências)
-4. vitest run (testes unitários)
-5. vitest run --project integration (testes de integração)
-6. vitest run --project isolation (testes de isolamento multi-tenant)
-7. coverage check (mínimo 80%, não pode diminuir)
+Gate 1 — biome check (lint + format)
+Gate 2 — tsc --noEmit (type check)
+Gate 3 — pnpm audit --audit-level=high (vulnerabilidades de dependências)
+Gate 4 — vitest run --project unit (testes unitários — .spec.ts)
+Gate 5 — vitest run --project integration (testes de integração — .integration.spec.ts + .e2e.spec.ts)
+Gate 6 — vitest run --project isolation (testes de isolamento multi-tenant — .isolation.spec.ts)
+Gate 7 — coverage check (mínimo 80%, não pode diminuir vs main)
 ```
 
-**Nenhum merge em main se qualquer etapa falhar.**
+**Nenhum merge em main se qualquer gate falhar.**
+
+### vitest.workspace.ts (esqueleto obrigatório)
+
+```typescript
+import { defineWorkspace } from 'vitest/config'
+
+export default defineWorkspace([
+  {
+    test: {
+      name: 'unit',
+      include: ['**/*.spec.ts', '**/*.arch.spec.ts'],
+      exclude: [
+        '**/*.integration.spec.ts',
+        '**/*.isolation.spec.ts',
+        '**/*.e2e.spec.ts',
+        '**/node_modules/**',
+        '**/dist/**',
+      ],
+    },
+  },
+  {
+    test: {
+      name: 'integration',
+      include: ['**/*.integration.spec.ts', '**/*.e2e.spec.ts'],
+      setupFiles: ['packages/test-utils/src/helpers/setup-db.ts'],
+    },
+  },
+  {
+    test: {
+      name: 'isolation',
+      include: ['**/*.isolation.spec.ts'],
+      setupFiles: ['packages/test-utils/src/helpers/setup-db.ts'],
+    },
+  },
+])
+```
+
+### turbo.json (pipeline obrigatório)
+
+```jsonc
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "lint": {},
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:isolation": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:push": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    }
+  }
+}
+```
+
+### Deploy Targets
+
+| App | Plataforma | Nota |
+|-----|-----------|------|
+| `apps/api` | Railway | Node.js serve(), long-running |
+| `apps/console` | Vercel | Next.js, edge-ready |
+| `apps/workers` | Railway | 3 services, start commands diferentes |
+| `apps/mobile` | Manual (MVP) / Fastlane (Fase 2) | Build por tenant |
+
+---
+
+## Bootstrap Order (Criar nesta ordem)
+
+```
+1. package.json (root) + pnpm-workspace.yaml + turbo.json + tsconfig.base.json + biome.json
+2. packages/shared          — folha do grafo, sem dependências
+3. packages/db              — depende de shared (Drizzle schema + client)
+4. packages/core            — depende de db + shared (domain logic)
+5. packages/integrations    — depende de core + shared (adapters)
+6. packages/test-utils      — depende de core + db + shared (infra de testes)
+7. vitest.workspace.ts      — orquestra os 3 projects de teste
+8. docker-compose.yml + docker-compose.test.yml
+9. .env.example + scripts/setup.sh
+10. apps/api                — scaffold mínimo (Hono + health endpoint)
+11. apps/workers            — scaffold mínimo (BullMQ + Redis connection)
+12. apps/console            — scaffold mínimo (Next.js + Supabase Auth)
+13. apps/mobile             — scaffold Capacitor (pode ser último)
+```
+
+**Nota:** Em dev, packages usam source imports (conditional exports). Build só é necessário para CI e produção.
 
 ---
 
