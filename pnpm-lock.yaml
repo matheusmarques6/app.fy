@@ -74,6 +74,25 @@ importers:
 
   packages/shared: {}
 
+  packages/test-utils:
+    dependencies:
+      '@appfy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@appfy/db':
+        specifier: workspace:*
+        version: link:../db
+      '@appfy/shared':
+        specifier: workspace:*
+        version: link:../shared
+      jose:
+        specifier: ^6.0.11
+        version: 6.2.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.16.4
+        version: 22.19.15
+
 packages:
 
   '@biomejs/biome@2.4.6':
@@ -940,6 +959,9 @@ packages:
   get-tsconfig@4.13.6:
     resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
 
+  jose@6.2.1:
+    resolution: {integrity: sha512-jUaKr1yrbfaImV7R2TN/b3IcZzsw38/chqMpo2XJ7i2F8AfM/lA4G1goC3JVEwg0H7UldTmSt3P68nt31W7/mw==}
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -1676,6 +1698,8 @@ snapshots:
   get-tsconfig@4.13.6:
     dependencies:
       resolve-pkg-maps: 1.0.0
+
+  jose@6.2.1: {}
 
   magic-string@0.30.21:
     dependencies:
