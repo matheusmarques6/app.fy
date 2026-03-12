@@ -1,0 +1,27 @@
+{
+  "name": "@appfy/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@appfy/db": "workspace:*",
+    "@appfy/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.4"
+  }
+}
