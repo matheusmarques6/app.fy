@@ -59,6 +59,19 @@ importers:
         specifier: ^4.19.4
         version: 4.21.0
 
+  packages/integrations:
+    dependencies:
+      '@appfy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@appfy/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.16.4
+        version: 22.19.15
+
   packages/shared: {}
 
 packages:
