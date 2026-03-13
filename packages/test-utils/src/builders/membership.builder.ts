@@ -1,13 +1,4 @@
-import type { MembershipRole } from '@appfy/shared'
-
-export interface MembershipRow {
-  readonly id: string
-  readonly userId: string
-  readonly tenantId: string
-  readonly role: MembershipRole
-  readonly createdAt: Date
-  readonly updatedAt: Date
-}
+import type { MembershipRow } from '@appfy/core'
 
 export class MembershipBuilder {
   private data: MembershipRow = {

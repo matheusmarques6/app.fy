@@ -37,6 +37,9 @@ export { DeviceRepository, DeviceService } from './devices/index.js'
 export type { EncryptedCredential } from './encryption/service.js'
 // Encryption
 export { EncryptionService } from './encryption/service.js'
+export type { MembershipRow } from './memberships/index.js'
+// Memberships
+export { MembershipRepository } from './memberships/index.js'
 export {
   AppUserNotFoundError,
   AutomationNotFoundError,

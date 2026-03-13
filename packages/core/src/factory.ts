@@ -6,6 +6,7 @@ import { BillingService } from './billing/index.js'
 import { StripeProvider } from './billing/stripe.provider.js'
 import { DeviceRepository, DeviceService } from './devices/index.js'
 import { EncryptionService } from './encryption/service.js'
+import { MembershipRepository } from './memberships/index.js'
 import { NotificationRepository, NotificationService } from './notifications/index.js'
 import { OneSignalProvider } from './push/onesignal.provider.js'
 import type { PushProvider } from './push/push-provider.interface.js'
@@ -14,6 +15,7 @@ import { TenantRepository, TenantService } from './tenants/index.js'
 
 export interface Dependencies {
   notificationRepo: NotificationRepository
+  membershipRepo: MembershipRepository
   tenantRepo: TenantRepository
   appUserRepo: AppUserRepository
   deviceRepo: DeviceRepository
@@ -44,6 +46,7 @@ export function createDependencies(
   overrides?: Partial<Dependencies>,
 ): Dependencies {
   const notificationRepo = overrides?.notificationRepo ?? new NotificationRepository(config.db)
+  const membershipRepo = overrides?.membershipRepo ?? new MembershipRepository(config.db)
   const tenantRepo = overrides?.tenantRepo ?? new TenantRepository(config.db)
   const appUserRepo = overrides?.appUserRepo ?? new AppUserRepository(config.db)
   const deviceRepo = overrides?.deviceRepo ?? new DeviceRepository(config.db)
@@ -66,6 +69,7 @@ export function createDependencies(
 
   return {
     notificationRepo,
+    membershipRepo,
     tenantRepo,
     appUserRepo,
     deviceRepo,

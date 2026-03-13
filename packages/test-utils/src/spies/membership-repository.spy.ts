@@ -1,15 +1,14 @@
 import type { MembershipRole } from '@appfy/shared'
-import type { MembershipRow } from '../builders/membership.builder.js'
+import type { MembershipRow } from '@appfy/core'
 import { MembershipBuilder } from '../builders/membership.builder.js'
 import { SpyBase } from './spy-base.js'
 
-/** Mirrors membership repository contract (no dedicated core class — membership is auth-scoped) */
 export class MembershipRepositorySpy extends SpyBase {
   result: MembershipRow | undefined = undefined
   listResult: MembershipRow[] = []
 
-  async findByUserAndTenant(userId: string, tenantId: string): Promise<MembershipRow | undefined> {
-    this.trackCall('findByUserAndTenant', [userId, tenantId])
+  async findByUserAndTenant(tenantId: string, userId: string): Promise<MembershipRow | undefined> {
+    this.trackCall('findByUserAndTenant', [tenantId, userId])
     return this.result
   }
 
