@@ -11,8 +11,7 @@ export interface DeliveryRow {
   readonly openedAt: Date | null
   readonly clickedAt: Date | null
   readonly convertedAt: Date | null
-  readonly failedAt: Date | null
-  readonly failureReason: string | null
+  readonly errorMessage: string | null
   readonly createdAt: Date
 }
 
@@ -28,8 +27,7 @@ export class DeliveryBuilder {
     openedAt: null,
     clickedAt: null,
     convertedAt: null,
-    failedAt: null,
-    failureReason: null,
+    errorMessage: null,
     createdAt: new Date(),
   }
 
@@ -87,8 +85,7 @@ export class DeliveryBuilder {
     this.data = {
       ...this.data,
       status: 'failed',
-      failedAt: new Date(),
-      failureReason: reason ?? null,
+      errorMessage: reason ?? null,
     }
     return this
   }

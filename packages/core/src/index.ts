@@ -1,3 +1,7 @@
+// Factory DI
+export type { Dependencies, FactoryConfig } from './factory.js'
+export { createDependencies } from './factory.js'
+
 // Domain Errors
 
 export type {
@@ -41,6 +45,7 @@ export {
   DomainError,
   EncryptionError,
   InvalidStatusTransitionError,
+  MissingTenantIdError,
   NotificationLimitExceededError,
   NotificationNotFoundError,
   PushProviderError,

@@ -1,4 +1,5 @@
 import { boolean, integer, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { flowTypeEnum } from './notifications.js'
 import { tenants } from './tenants.js'
 
 export const automationConfigs = pgTable(
@@ -8,7 +9,7 @@ export const automationConfigs = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id),
-    flowType: text('flow_type').notNull(),
+    flowType: flowTypeEnum('flow_type').notNull(),
     isEnabled: boolean('is_enabled').default(true).notNull(),
     delaySeconds: integer('delay_seconds').notNull(),
     templateTitle: text('template_title').notNull(),

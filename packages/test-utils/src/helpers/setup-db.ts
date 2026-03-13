@@ -9,16 +9,16 @@
  *   beforeAll(() => setupTestDatabase())
  *   afterAll(() => teardownTestDatabase())
  *
- * Requires TEST_DATABASE_URL env var pointing to the isolated test DB.
+ * Requires DATABASE_URL env var pointing to the isolated test DB.
  */
 
 let teardownFn: (() => Promise<void>) | null = null
 
 export async function setupTestDatabase(): Promise<void> {
-  const url = process.env.TEST_DATABASE_URL
+  const url = process.env.DATABASE_URL
   if (!url) {
     throw new Error(
-      'TEST_DATABASE_URL is required. Start test services with: docker-compose -f docker-compose.test.yml up',
+      'DATABASE_URL is required. Start test services with: docker-compose -f docker-compose.test.yml up',
     )
   }
 
