@@ -1,9 +1,24 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { HttpClient } from './http-client.js'
 import { NuvemshopAdapter } from './nuvemshop/adapter.js'
 import type { NuvemshopConfig } from './nuvemshop/types.js'
 import type { PlatformAdapter } from './platform-adapter.interface.js'
 import { ShopifyAdapter } from './shopify/adapter.js'
 import type { ShopifyConfig } from './shopify/types.js'
+
+// ──────────────────────────────────────────────
+// Stub HTTP client that returns empty responses
+// ──────────────────────────────────────────────
+
+class StubHttpClient implements HttpClient {
+  async get<T>(): Promise<T> {
+    return {} as T
+  }
+  async post<T>(): Promise<T> {
+    return {} as T
+  }
+  async delete(): Promise<void> {}
+}
 
 // ──────────────────────────────────────────────
 // Contract test factory
@@ -42,26 +57,6 @@ function platformAdapterContractTest(name: string, factory: () => PlatformAdapte
     it('should implement registerWebhooks', () => {
       expect(typeof adapter.registerWebhooks).toBe('function')
     })
-
-    it('should throw "not implemented" on getProducts call', () => {
-      expect(() => adapter.getProducts({})).toThrow(/not implemented/i)
-    })
-
-    it('should throw "not implemented" on getOrders call', () => {
-      expect(() => adapter.getOrders({})).toThrow(/not implemented/i)
-    })
-
-    it('should throw "not implemented" on getAbandonedCarts call', () => {
-      expect(() => adapter.getAbandonedCarts()).toThrow(/not implemented/i)
-    })
-
-    it('should throw "not implemented" on getCustomer call', () => {
-      expect(() => adapter.getCustomer('test-id')).toThrow(/not implemented/i)
-    })
-
-    it('should throw "not implemented" on registerWebhooks call', () => {
-      expect(() => adapter.registerWebhooks([])).toThrow(/not implemented/i)
-    })
   })
 }
 
@@ -83,8 +78,10 @@ const nuvemshopConfig: NuvemshopConfig = {
   appSecret: 'test-app-secret',
 }
 
-platformAdapterContractTest('Shopify', () => new ShopifyAdapter(shopifyConfig))
-platformAdapterContractTest('Nuvemshop', () => new NuvemshopAdapter(nuvemshopConfig))
+const stubHttp = new StubHttpClient()
+
+platformAdapterContractTest('Shopify', () => new ShopifyAdapter(shopifyConfig, stubHttp))
+platformAdapterContractTest('Nuvemshop', () => new NuvemshopAdapter(nuvemshopConfig, stubHttp))
 
 // ──────────────────────────────────────────────
 // Domain validation tests
@@ -102,7 +99,7 @@ describe('ShopifyAdapter domain validation', () => {
   })
 
   it('should accept valid Shopify domains', () => {
-    const adapter = new ShopifyAdapter(shopifyConfig)
+    const adapter = new ShopifyAdapter(shopifyConfig, stubHttp)
     expect(adapter.platform).toBe('shopify')
   })
 })
@@ -119,15 +116,18 @@ describe('NuvemshopAdapter domain validation', () => {
   })
 
   it('should accept valid *.nuvemshop.com domains', () => {
-    const adapter = new NuvemshopAdapter(nuvemshopConfig)
+    const adapter = new NuvemshopAdapter(nuvemshopConfig, stubHttp)
     expect(adapter.platform).toBe('nuvemshop')
   })
 
   it('should accept valid *.lojavirtualnuvem.com.br domains', () => {
-    const adapter = new NuvemshopAdapter({
-      ...nuvemshopConfig,
-      shopDomain: 'minha-loja.lojavirtualnuvem.com.br',
-    })
+    const adapter = new NuvemshopAdapter(
+      {
+        ...nuvemshopConfig,
+        shopDomain: 'minha-loja.lojavirtualnuvem.com.br',
+      },
+      stubHttp,
+    )
     expect(adapter.platform).toBe('nuvemshop')
   })
 })

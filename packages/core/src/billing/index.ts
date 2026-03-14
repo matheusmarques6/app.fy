@@ -1,3 +1,5 @@
+export type { IdempotencyStore } from './idempotency.js'
+export { InMemoryIdempotencyStore } from './idempotency.js'
 export type { PlanLimitCheckResult } from './plan-limit.service.js'
 export { checkPlanLimit, PlanLimitService } from './plan-limit.service.js'
 export type { BillingWebhookEvent, BillingServiceDeps, CheckoutSession, PlanPriceRegistry, Subscription } from './service.js'

@@ -7,6 +7,8 @@ export interface TenantRow {
   readonly name: string
   readonly slug: string
   readonly platform: string | null
+  readonly platformStoreUrl: string | null
+  readonly platformCredentials: unknown | null
   readonly onesignalAppId: string | null
   readonly isActive: boolean
   readonly notificationCountCurrentPeriod: number
@@ -37,6 +39,16 @@ export class TenantRepository extends BaseRepository {
       .select()
       .from(tenants)
       .where(eq(tenants.id, tenantId))
+      .limit(1)
+    return rows[0] as TenantRow | undefined
+  }
+
+  async findByPlatformUrl(platformStoreUrl: string): Promise<TenantRow | undefined> {
+    if (!platformStoreUrl || platformStoreUrl.trim() === '') return undefined
+    const rows = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.platformStoreUrl, platformStoreUrl))
       .limit(1)
     return rows[0] as TenantRow | undefined
   }

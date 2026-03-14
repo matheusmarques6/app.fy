@@ -13,7 +13,7 @@ export interface HttpClient {
  */
 export class FetchHttpClient implements HttpClient {
   async get<T>(url: string, headers?: Record<string, string>): Promise<T> {
-    const res = await fetch(url, { headers })
+    const res = await fetch(url, headers ? { headers } : {})
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
     return res.json() as Promise<T>
   }
@@ -29,7 +29,7 @@ export class FetchHttpClient implements HttpClient {
   }
 
   async delete(url: string, headers?: Record<string, string>): Promise<void> {
-    const res = await fetch(url, { method: 'DELETE', headers })
+    const res = await fetch(url, headers ? { method: 'DELETE', headers } : { method: 'DELETE' })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
   }
 }

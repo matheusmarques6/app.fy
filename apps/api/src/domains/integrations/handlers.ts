@@ -1,8 +1,39 @@
 import type { Dependencies } from '@appfy/core'
+import {
+  mapWebhookToFlowType,
+  verifyNuvemshopWebhook,
+  verifyShopifyWebhook,
+} from '@appfy/integrations'
+import { QUEUE_NAMES } from '@appfy/shared'
 import type { Context } from 'hono'
 import type { ConnectBody } from './schemas.js'
 
-export function createIntegrationHandlers(_deps: Dependencies) {
+/** Headers sent by each platform on webhook requests */
+interface PlatformHeaders {
+  readonly hmac: string | undefined
+  readonly topic: string | undefined
+  readonly shopDomain: string | undefined
+}
+
+function extractPlatformHeaders(c: Context, platform: string): PlatformHeaders | null {
+  if (platform === 'shopify') {
+    return {
+      hmac: c.req.header('X-Shopify-Hmac-Sha256'),
+      topic: c.req.header('X-Shopify-Topic'),
+      shopDomain: c.req.header('X-Shopify-Shop-Domain'),
+    }
+  }
+  if (platform === 'nuvemshop') {
+    return {
+      hmac: c.req.header('X-Linkedstore-Hmac-Sha256'),
+      topic: c.req.header('X-Linkedstore-Topic'),
+      shopDomain: c.req.header('X-Linkedstore-Shop-Domain'),
+    }
+  }
+  return null
+}
+
+export function createIntegrationHandlers(deps: Dependencies) {
   return {
     /** GET /integrations — List connected integrations */
     async list(c: Context) {
@@ -45,13 +76,105 @@ export function createIntegrationHandlers(_deps: Dependencies) {
 
     /** POST /integrations/:platform/webhook — Webhook receiver (no auth) */
     async webhook(c: Context) {
-      // Read platform and body for future HMAC verification + ingestion
-      void c.req.param('platform')
-      void await c.req.text()
+      const platform = c.req.param('platform')
+      const rawBody = await c.req.text()
 
-      // TODO: Verify HMAC signature per platform
-      // TODO: Enqueue data ingestion job
-      return c.json({ received: true })
+      // 1. Validate platform is supported
+      const headers = extractPlatformHeaders(c, platform)
+      if (!headers) {
+        return c.json(
+          { error: { code: 'UNSUPPORTED_PLATFORM', message: `Unsupported platform: ${platform}` } },
+          400,
+        )
+      }
+
+      // 2. Validate required headers
+      if (!headers.hmac || !headers.topic) {
+        return c.json(
+          { error: { code: 'MISSING_HEADERS', message: 'Missing required webhook headers (hmac, topic)' } },
+          400,
+        )
+      }
+
+      if (!headers.shopDomain) {
+        return c.json(
+          { error: { code: 'MISSING_HEADERS', message: 'Missing required webhook headers (shop domain)' } },
+          400,
+        )
+      }
+
+      // 3. Look up tenant by platform store URL to get HMAC secret
+      const tenant = await deps.tenantRepo.findByPlatformUrl(headers.shopDomain)
+      if (!tenant) {
+        return c.json(
+          { error: { code: 'TENANT_NOT_FOUND', message: 'No tenant found for this shop domain' } },
+          404,
+        )
+      }
+
+      // 4. Decrypt platform credentials to get the webhook secret
+      let webhookSecret: string
+      try {
+        if (!tenant.platformCredentials) {
+          return c.json(
+            { error: { code: 'MISSING_CREDENTIALS', message: 'No platform credentials configured for this tenant' } },
+            422,
+          )
+        }
+        const decrypted = await deps.encryptionService.decrypt(
+          tenant.platformCredentials as { ct: string; iv: string; tag: string; alg: string },
+        )
+        const credentials = JSON.parse(decrypted) as Record<string, string>
+        webhookSecret = credentials.webhookSecret ?? credentials.clientSecret ?? ''
+      } catch {
+        return c.json(
+          { error: { code: 'CREDENTIAL_ERROR', message: 'Failed to decrypt platform credentials' } },
+          500,
+        )
+      }
+
+      // 5. Verify HMAC signature
+      const verifyFn = platform === 'shopify' ? verifyShopifyWebhook : verifyNuvemshopWebhook
+      const isValid = verifyFn(rawBody, headers.hmac, webhookSecret)
+
+      if (!isValid) {
+        return c.json(
+          { error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' } },
+          401,
+        )
+      }
+
+      // 6. Map topic to flow type
+      const flowType = mapWebhookToFlowType(headers.topic)
+
+      // 7. Parse body
+      let data: unknown
+      try {
+        data = JSON.parse(rawBody)
+      } catch {
+        data = rawBody
+      }
+
+      // 8. Build job payload for the data-ingestion queue
+      const jobPayload = {
+        tenantId: tenant.id,
+        platform,
+        topic: headers.topic,
+        flowType: flowType ?? null,
+        shopDomain: headers.shopDomain,
+        data,
+        receivedAt: new Date().toISOString(),
+        queue: QUEUE_NAMES.dataIngestion,
+      }
+
+      // Return acknowledgement with payload info
+      // Actual BullMQ enqueue will happen when workers integration is connected
+      return c.json({
+        received: true,
+        topic: headers.topic,
+        flowType: flowType ?? null,
+        jobPayload,
+      })
     },
   }
 }

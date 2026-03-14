@@ -2,10 +2,6 @@ import type { Dependencies } from '@appfy/core'
 import type { Context } from 'hono'
 import type { CheckoutBody, PortalBody } from './schemas.js'
 
-/** In-process idempotency guard for webhook events (Redis-backed in production) */
-const processedEventIds = new Set<string>()
-const MAX_PROCESSED_EVENTS = 10000
-
 export function createBillingHandlers(deps: Dependencies) {
   return {
     /** POST /billing/checkout — Create Stripe checkout session (owner only) */
@@ -67,53 +63,75 @@ export function createBillingHandlers(deps: Dependencies) {
         }
 
         // Idempotency: skip already-processed events
-        if (processedEventIds.has(event.id)) {
+        if (await deps.idempotencyStore.has(event.id)) {
           return c.json({ received: true })
         }
-        processedEventIds.add(event.id)
-        if (processedEventIds.size > MAX_PROCESSED_EVENTS) {
-          const entries = [...processedEventIds]
-          for (let i = 0; i < entries.length - MAX_PROCESSED_EVENTS / 2; i++) {
-            processedEventIds.delete(entries[i]!)
-          }
-        }
+        await deps.idempotencyStore.add(event.id)
 
         switch (event.type) {
           case 'checkout.session.completed': {
             const obj = event.data.object as Record<string, unknown>
             const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (tenantId) {
-              await deps.billingService.handleCheckoutCompleted(
-                tenantId,
-                obj.customer as string,
-                obj.subscription as string,
-                ((obj.metadata as Record<string, string>)?.planName) ?? 'starter',
-              )
+            if (!tenantId) {
+              console.warn(JSON.stringify({
+                level: 'warn',
+                message: 'Stripe webhook missing tenantId in metadata',
+                eventType: event.type,
+                eventId: event.id,
+              }))
+              break
             }
+            await deps.billingService.handleCheckoutCompleted(
+              tenantId,
+              obj.customer as string,
+              obj.subscription as string,
+              ((obj.metadata as Record<string, string>)?.planName) ?? 'starter',
+            )
             break
           }
           case 'invoice.payment_succeeded': {
             const obj = event.data.object as Record<string, unknown>
             const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (tenantId) {
-              await deps.billingService.handlePaymentSucceeded(tenantId)
+            if (!tenantId) {
+              console.warn(JSON.stringify({
+                level: 'warn',
+                message: 'Stripe webhook missing tenantId in metadata',
+                eventType: event.type,
+                eventId: event.id,
+              }))
+              break
             }
+            await deps.billingService.handlePaymentSucceeded(tenantId)
             break
           }
           case 'invoice.payment_failed': {
             const obj = event.data.object as Record<string, unknown>
             const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (tenantId) {
-              await deps.billingService.handlePaymentFailed(tenantId)
+            if (!tenantId) {
+              console.warn(JSON.stringify({
+                level: 'warn',
+                message: 'Stripe webhook missing tenantId in metadata',
+                eventType: event.type,
+                eventId: event.id,
+              }))
+              break
             }
+            await deps.billingService.handlePaymentFailed(tenantId)
             break
           }
           case 'customer.subscription.deleted': {
             const obj = event.data.object as Record<string, unknown>
             const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (tenantId) {
-              await deps.billingService.handleSubscriptionDeleted(tenantId)
+            if (!tenantId) {
+              console.warn(JSON.stringify({
+                level: 'warn',
+                message: 'Stripe webhook missing tenantId in metadata',
+                eventType: event.type,
+                eventId: event.id,
+              }))
+              break
             }
+            await deps.billingService.handleSubscriptionDeleted(tenantId)
             break
           }
           default:

@@ -24,6 +24,7 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@appfy/test-utils": "workspace:*",
     "@types/node": "^22.16.4",
     "tsx": "^4.19.4"
   }
