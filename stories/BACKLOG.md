@@ -1906,4 +1906,32 @@ This path delivers: auth → tenants → users → devices → notifications →
 
 ---
 
+## Stories Pendentes (Fases 1-3) — Status 2026-03-14
+
+### P0 — Bloqueadores — DONE
+
+- ~~**Story 3.1** — AES-256-GCM Encryption Service~~ — 14 tests (round-trip, tamper, wrong key, unique IV)
+- ~~**Story 3.2** — SSRF Protection Utility~~ — 27 tests (whitelist, private IPs, localhost, spoofing)
+- ~~**Story 5.2** — Encrypted Credentials Storage~~ — 7 tests (store, retrieve, empty, propagation)
+- ~~**Story 5B.3** — Audit Log Service~~ — 9 tests (log, list, getById, AuditLogger interface) + API endpoint (owner-only)
+
+### P1 — Importantes — DONE
+
+- ~~**Story 3.3** — Rate Limiting Middleware~~ — 7 tests (limit, per-IP isolation, window expiry, Redis store)
+- ~~**Story 4.1** — Auth Middleware JWT~~ — 7 tests (missing header, expired, wrong secret, missing sub, valid)
+- ~~**Story 4.2** — Tenant Middleware & Switch-Tenant~~ — 7 tests + JWT signing with jose (membership validation + role)
+- ~~**Story 4.3** — Roles Middleware RBAC~~ — 11 tests (full owner/editor/viewer matrix)
+- ~~**Story 5B.1** — Middleware Chain~~ — 7 tests (chain order: auth→tenant→roles, health bypass, error handling)
+- ~~**Story 5B.4** — Architecture Tests~~ — 4 tests (no console.log, no .only/.skip, naming convention)
+- **Story 6.4** — Segment Refresh Worker — ALREADY DONE (10 tests)
+- **Story 8.2** — Automation Trigger & BullMQ — ALREADY DONE (48 tests)
+- **Story 2.2** — RLS Policies — SQL migration done, 129 tests marked .todo (require Docker DB)
+
+### Summary
+
+**Total new tests added: 100** (14+27+7+9+7+7+7+11+7+4)
+**Total project tests: 677 passing, 129 todo**
+
+---
+
 *Pax, equilibrando prioridades*

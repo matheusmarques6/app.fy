@@ -7,8 +7,12 @@ export class TenantBuilder {
     slug: `tenant-${crypto.randomUUID().slice(0, 8)}`,
     platform: 'shopify',
     isActive: true,
+    onesignalAppId: null,
     notificationCountCurrentPeriod: 0,
     notificationLimit: null,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    planId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -51,6 +55,27 @@ export class TenantBuilder {
     return this
   }
 
+  withStripeCustomerId(stripeCustomerId: string): this {
+    this.data = { ...this.data, stripeCustomerId }
+    return this
+  }
+
+  withStripeSubscriptionId(stripeSubscriptionId: string): this {
+    this.data = { ...this.data, stripeSubscriptionId }
+    return this
+  }
+
+  withStripeIds(customerId: string, subscriptionId: string): this {
+    this.data = { ...this.data, stripeCustomerId: customerId, stripeSubscriptionId: subscriptionId }
+    return this
+  }
+
+  withPlanId(planId: string): this {
+    this.data = { ...this.data, planId }
+    return this
+  }
+
+  /** @deprecated Use withStripeIds or withPlan instead */
   withStripe(limit: number): this {
     return this.withPlan(limit)
   }

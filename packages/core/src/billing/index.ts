@@ -1,3 +1,6 @@
-export type { BillingWebhookEvent, CheckoutSession, Subscription } from './service.js'
+export type { PlanLimitCheckResult } from './plan-limit.service.js'
+export { checkPlanLimit, PlanLimitService } from './plan-limit.service.js'
+export type { BillingWebhookEvent, BillingServiceDeps, CheckoutSession, PlanPriceRegistry, Subscription } from './service.js'
 export { BillingService } from './service.js'
+export type { StripeClient, StripeCheckoutResult, StripeSubscription } from './stripe.provider.js'
 export { StripeProvider } from './stripe.provider.js'

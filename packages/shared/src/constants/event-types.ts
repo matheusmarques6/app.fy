@@ -30,10 +30,10 @@ export type NotificationType = (typeof notificationTypes)[number]
 /** Notification lifecycle status */
 export const notificationStatuses = [
   'draft',
-  'approved',
   'scheduled',
   'sending',
   'sent',
+  'completed',
   'failed',
 ] as const
 

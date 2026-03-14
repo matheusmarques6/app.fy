@@ -1,9 +1,24 @@
 import type { Dependencies } from '@appfy/core'
 import { normalizePagination } from '@appfy/core'
 import type { Context } from 'hono'
+import type { CreateAppUserBody, UpdateAppUserBody } from './schemas.js'
 
 export function createAppUserHandlers(deps: Dependencies) {
   return {
+    /** POST /app-users — Register app user */
+    async register(c: Context) {
+      const tenantId = c.get('tenantId') as string
+      const body = c.get('validatedBody' as never) as CreateAppUserBody
+
+      const appUser = await deps.appUserService.register(tenantId, {
+        ...(body.externalId !== undefined && { userIdExternal: body.externalId }),
+        ...(body.email !== undefined && { email: body.email }),
+        ...(body.name !== undefined && { name: body.name }),
+      })
+
+      return c.json({ data: appUser }, 201)
+    },
+
     /** GET /app-users — List (paginated) */
     async list(c: Context) {
       const tenantId = c.get('tenantId') as string
@@ -15,12 +30,27 @@ export function createAppUserHandlers(deps: Dependencies) {
       return c.json(result)
     },
 
-    /** GET /app-users/:id — Detail with events timeline */
+    /** GET /app-users/:id — Detail */
     async getById(c: Context) {
       const tenantId = c.get('tenantId') as string
       const id = c.req.param('id')!
       const appUser = await deps.appUserService.findById(tenantId, id)
       return c.json({ data: appUser })
+    },
+
+    /** PUT /app-users/:id — Update */
+    async update(c: Context) {
+      const tenantId = c.get('tenantId') as string
+      const id = c.req.param('id')!
+      const body = c.get('validatedBody' as never) as UpdateAppUserBody
+
+      const updated = await deps.appUserService.update(tenantId, id, {
+        ...(body.email !== undefined && { email: body.email }),
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.pushOptIn !== undefined && { pushOptIn: body.pushOptIn }),
+      })
+
+      return c.json({ data: updated })
     },
   }
 }

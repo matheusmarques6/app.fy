@@ -23,7 +23,7 @@ export function createNotificationRoutes(deps: Dependencies) {
   app.post('/', requireRoles('owner', 'editor'), validate(createNotificationSchema), handlers.create)
 
   // only owner can delete
-  app.delete('/:id', requireRoles('owner'), handlers.delete)
+  app.delete('/:id', requireRoles('owner'), handlers.remove)
 
   return app
 }

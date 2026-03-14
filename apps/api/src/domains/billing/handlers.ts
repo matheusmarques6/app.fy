@@ -1,6 +1,10 @@
 import type { Dependencies } from '@appfy/core'
 import type { Context } from 'hono'
-import type { CheckoutBody } from './schemas.js'
+import type { CheckoutBody, PortalBody } from './schemas.js'
+
+/** In-process idempotency guard for webhook events (Redis-backed in production) */
+const processedEventIds = new Set<string>()
+const MAX_PROCESSED_EVENTS = 10000
 
 export function createBillingHandlers(deps: Dependencies) {
   return {
@@ -9,15 +13,32 @@ export function createBillingHandlers(deps: Dependencies) {
       const tenantId = c.get('tenantId') as string
       const body = c.get('validatedBody' as never) as CheckoutBody
 
-      const session = await deps.billingService.createCheckout(tenantId, body.planName)
+      const session = await deps.billingService.createCheckout(
+        tenantId,
+        body.planName,
+        body.successUrl,
+        body.cancelUrl,
+      )
       return c.json({ data: session })
     },
 
-    /** POST /billing/portal — Create Stripe portal session (owner only) */
+    /** POST /billing/portal — Create Stripe billing portal session (owner only) */
     async portal(c: Context) {
       const tenantId = c.get('tenantId') as string
-      // TODO: BillingService.createPortalSession not yet implemented
+      const body = c.get('validatedBody' as never) as PortalBody
+
+      const result = await deps.billingService.createPortalSession(tenantId, body.returnUrl)
+      return c.json({ data: result })
+    },
+
+    /** GET /billing/subscription — Get current subscription details */
+    async subscription(c: Context) {
+      const tenantId = c.get('tenantId') as string
+
       const subscription = await deps.billingService.getSubscription(tenantId)
+      if (!subscription) {
+        return c.json({ data: null })
+      }
       return c.json({ data: subscription })
     },
 
@@ -34,7 +55,72 @@ export function createBillingHandlers(deps: Dependencies) {
       const rawBody = await c.req.text()
 
       try {
-        await deps.billingService.handleWebhook({ type: 'stripe_event', data: JSON.parse(rawBody) })
+        const event = deps.billingService.constructWebhookEvent(rawBody, signature)
+
+        // Replay protection: reject events older than 5 minutes
+        const eventAge = Math.floor(Date.now() / 1000) - event.created
+        if (eventAge > 300) {
+          return c.json(
+            { error: { code: 'REPLAY_DETECTED', message: 'Event timestamp is too old' } },
+            400,
+          )
+        }
+
+        // Idempotency: skip already-processed events
+        if (processedEventIds.has(event.id)) {
+          return c.json({ received: true })
+        }
+        processedEventIds.add(event.id)
+        if (processedEventIds.size > MAX_PROCESSED_EVENTS) {
+          const entries = [...processedEventIds]
+          for (let i = 0; i < entries.length - MAX_PROCESSED_EVENTS / 2; i++) {
+            processedEventIds.delete(entries[i]!)
+          }
+        }
+
+        switch (event.type) {
+          case 'checkout.session.completed': {
+            const obj = event.data.object as Record<string, unknown>
+            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
+            if (tenantId) {
+              await deps.billingService.handleCheckoutCompleted(
+                tenantId,
+                obj.customer as string,
+                obj.subscription as string,
+                ((obj.metadata as Record<string, string>)?.planName) ?? 'starter',
+              )
+            }
+            break
+          }
+          case 'invoice.payment_succeeded': {
+            const obj = event.data.object as Record<string, unknown>
+            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
+            if (tenantId) {
+              await deps.billingService.handlePaymentSucceeded(tenantId)
+            }
+            break
+          }
+          case 'invoice.payment_failed': {
+            const obj = event.data.object as Record<string, unknown>
+            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
+            if (tenantId) {
+              await deps.billingService.handlePaymentFailed(tenantId)
+            }
+            break
+          }
+          case 'customer.subscription.deleted': {
+            const obj = event.data.object as Record<string, unknown>
+            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
+            if (tenantId) {
+              await deps.billingService.handleSubscriptionDeleted(tenantId)
+            }
+            break
+          }
+          default:
+            // Unhandled event type — acknowledge receipt
+            break
+        }
+
         return c.json({ received: true })
       } catch {
         return c.json(

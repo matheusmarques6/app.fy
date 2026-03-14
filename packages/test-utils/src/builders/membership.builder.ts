@@ -4,7 +4,7 @@ export class MembershipBuilder {
   private data: MembershipRow = {
     id: crypto.randomUUID(),
     userId: crypto.randomUUID(),
-    tenantId: '',
+    tenantId: crypto.randomUUID(),
     role: 'editor',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -41,9 +41,6 @@ export class MembershipBuilder {
   }
 
   build(): MembershipRow {
-    if (!this.data.tenantId) {
-      throw new Error('MembershipBuilder: tenantId is required. Use .withTenant()')
-    }
     return { ...this.data }
   }
 }

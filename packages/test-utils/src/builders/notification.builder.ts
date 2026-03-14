@@ -4,7 +4,7 @@ import type { FlowType, NotificationStatus, NotificationType } from '@appfy/shar
 export class NotificationBuilder {
   private data: Notification = {
     id: crypto.randomUUID(),
-    tenantId: '',
+    tenantId: crypto.randomUUID(),
     title: 'Test Notification',
     body: 'Test notification body',
     type: 'manual',
@@ -17,6 +17,7 @@ export class NotificationBuilder {
     status: 'draft',
     createdBy: null,
     abVariant: null,
+    abConfig: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -66,10 +67,6 @@ export class NotificationBuilder {
     return this
   }
 
-  approved(): this {
-    return this.withStatus('approved')
-  }
-
   sent(): this {
     this.data = { ...this.data, status: 'sent', sentAt: new Date() }
     return this
@@ -84,6 +81,11 @@ export class NotificationBuilder {
     return this
   }
 
+  withAbConfig(config: unknown): this {
+    this.data = { ...this.data, abConfig: config }
+    return this
+  }
+
   withImage(url: string): this {
     this.data = { ...this.data, imageUrl: url }
     return this
@@ -95,9 +97,6 @@ export class NotificationBuilder {
   }
 
   build(): Notification {
-    if (!this.data.tenantId) {
-      throw new Error('NotificationBuilder: tenantId is required. Use .withTenant()')
-    }
     return { ...this.data }
   }
 }

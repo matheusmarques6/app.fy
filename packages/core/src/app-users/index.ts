@@ -1,3 +1,5 @@
 export type { AppUserRow, CreateAppUserInput, UpdateAppUserInput } from './repository.js'
 export { AppUserRepository } from './repository.js'
 export { AppUserService } from './service.js'
+export { isValidEmail, validateAppUserInput } from './validation.js'
+export type { AppUserValidationInput, AppUserValidationResult } from './validation.js'

@@ -77,3 +77,15 @@ export class MissingTenantIdError extends DomainError {
     super('tenantId is required for all repository operations', 'MISSING_TENANT_ID')
   }
 }
+
+export class InvalidEventTypeError extends DomainError {
+  constructor(eventType: string) {
+    super(`Invalid event type: ${eventType}`, 'INVALID_EVENT_TYPE')
+  }
+}
+
+export class DeliveryNotFoundError extends DomainError {
+  constructor(deliveryId: string) {
+    super(`Delivery not found: ${deliveryId}`, 'DELIVERY_NOT_FOUND')
+  }
+}

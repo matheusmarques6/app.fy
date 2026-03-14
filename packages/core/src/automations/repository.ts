@@ -1,4 +1,6 @@
+import { automationConfigs } from '@appfy/db'
 import type { FlowType } from '@appfy/shared'
+import { and, asc, eq } from 'drizzle-orm'
 import { BaseRepository } from '../repositories/base.repository.js'
 
 export interface AutomationConfigRow {
@@ -22,28 +24,63 @@ export interface UpdateAutomationInput {
 export class AutomationRepository extends BaseRepository {
   async findByFlow(
     tenantId: string,
-    _flowType: FlowType,
+    flowType: FlowType,
   ): Promise<AutomationConfigRow | undefined> {
     this.assertTenantId(tenantId)
-    throw new Error('Not implemented')
+    const rows = await this.db
+      .select()
+      .from(automationConfigs)
+      .where(and(eq(automationConfigs.tenantId, tenantId), eq(automationConfigs.flowType, flowType)))
+      .limit(1)
+    return rows[0] as AutomationConfigRow | undefined
   }
 
   async listByTenant(tenantId: string): Promise<AutomationConfigRow[]> {
     this.assertTenantId(tenantId)
-    throw new Error('Not implemented')
+    const rows = await this.db
+      .select()
+      .from(automationConfigs)
+      .where(eq(automationConfigs.tenantId, tenantId))
+      .orderBy(asc(automationConfigs.flowType))
+    return rows as AutomationConfigRow[]
   }
 
   async update(
     tenantId: string,
-    _flowType: FlowType,
-    _input: UpdateAutomationInput,
+    flowType: FlowType,
+    input: UpdateAutomationInput,
   ): Promise<AutomationConfigRow> {
     this.assertTenantId(tenantId)
-    throw new Error('Not implemented')
+    const rows = await this.db
+      .update(automationConfigs)
+      .set({
+        ...(input.delaySeconds !== undefined && { delaySeconds: input.delaySeconds }),
+        ...(input.templateTitle !== undefined && { templateTitle: input.templateTitle }),
+        ...(input.templateBody !== undefined && { templateBody: input.templateBody }),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(automationConfigs.tenantId, tenantId), eq(automationConfigs.flowType, flowType)),
+      )
+      .returning()
+    return rows[0] as AutomationConfigRow
   }
 
-  async toggleEnabled(tenantId: string, _flowType: FlowType, _enabled: boolean): Promise<void> {
+  async toggleEnabled(tenantId: string, flowType: FlowType, enabled: boolean): Promise<void> {
     this.assertTenantId(tenantId)
-    throw new Error('Not implemented')
+    await this.db
+      .update(automationConfigs)
+      .set({ isEnabled: enabled, updatedAt: new Date() })
+      .where(
+        and(eq(automationConfigs.tenantId, tenantId), eq(automationConfigs.flowType, flowType)),
+      )
+  }
+
+  async disableAllForTenant(tenantId: string): Promise<void> {
+    this.assertTenantId(tenantId)
+    await this.db
+      .update(automationConfigs)
+      .set({ isEnabled: false, updatedAt: new Date() })
+      .where(eq(automationConfigs.tenantId, tenantId))
   }
 }

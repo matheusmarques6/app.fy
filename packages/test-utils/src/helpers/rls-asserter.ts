@@ -1,79 +1,114 @@
 /**
  * RLS assertion helpers for multi-tenant isolation tests.
  *
- * These helpers template the 6 standard RLS scenarios that every
- * tenant-scoped table must pass. They require a running test database
- * with RLS policies applied.
+ * These helpers provide utilities to test RLS policies by simulating
+ * JWT claims via `set_config('request.jwt.claims', ...)` and switching
+ * the PostgreSQL role to `authenticated`.
  *
- * @example
- * import { createRlsAssertionSuite } from '@appfy/test-utils'
- *
- * createRlsAssertionSuite({
- *   table: 'notifications',
- *   setup: async (sql, tenantId) => {
- *     await sql`INSERT INTO notifications (id, tenant_id, ...) VALUES (...)`
- *   },
- *   query: async (sql) => sql`SELECT * FROM notifications`,
- * })
+ * Requires the RLS migration (0001_rls_policies.sql) to be applied,
+ * which creates the auth schema, auth.jwt() function, and the
+ * authenticated/anon roles.
  */
 
+export interface RlsTestContext {
+  /** Raw postgres.js SQL tagged template */
+  sql: unknown
+}
+
 export interface RlsAssertionConfig {
-  /** Table name being tested */
   table: string
-  /** Insert test data for a specific tenant */
   setup: (sql: unknown, tenantId: string) => Promise<void>
-  /** Query the table (results should be filtered by RLS) */
   query: (sql: unknown) => Promise<unknown[]>
-  /** Optional: Insert data with a mismatched tenant_id (should fail) */
   insertCrossTenant?: (sql: unknown, tenantIdA: string, tenantIdB: string) => Promise<void>
 }
 
 /**
- * Asserts that tenant A cannot read tenant B's data.
- * This is the core multi-tenant isolation check.
+ * Execute a function within a transaction that simulates an authenticated
+ * user with specific JWT claims (tenant_id + sub).
  *
- * @param config - Table, setup, and query functions
- * @param tenantAId - First tenant ID
- * @param tenantBId - Second tenant ID
+ * Usage with postgres.js:
+ * ```ts
+ * import postgres from 'postgres'
+ * const sql = postgres(DATABASE_URL)
+ *
+ * const rows = await withTenantJwt(sql, tenantId, userId, async (tx) => {
+ *   return tx`SELECT * FROM notifications`
+ * })
+ * ```
  */
-export async function assertTenantIsolation(
-  config: RlsAssertionConfig,
-  tenantAId: string,
-  tenantBId: string,
-): Promise<void> {
-  // This is a template — actual implementation requires:
-  // 1. SET LOCAL role TO authenticated
-  // 2. SET LOCAL request.jwt.claims TO '{"tenant_id": "..."}'
-  // 3. Run query and assert results
-
-  // Placeholder that throws if called without DB setup
-  throw new Error(
-    `assertTenantIsolation for '${config.table}' requires a running test database. ` +
-      `Tenants: ${tenantAId}, ${tenantBId}`,
-  )
+export async function withTenantJwt<T>(
+  // biome-ignore lint/suspicious/noExplicitAny: postgres.js types are complex
+  sql: any,
+  tenantId: string,
+  userId: string,
+  fn: (tx: unknown) => Promise<T>,
+): Promise<T> {
+  return sql.begin(async (tx: unknown) => {
+    const claims = JSON.stringify({ sub: userId, tenant_id: tenantId })
+    // biome-ignore lint/suspicious/noExplicitAny: raw SQL template
+    const txAny = tx as any
+    await txAny`SELECT set_config('request.jwt.claims', ${claims}, true)`
+    await txAny`SET LOCAL ROLE authenticated`
+    return fn(tx)
+  })
 }
 
 /**
- * Asserts that queries without a tenant JWT return zero results.
+ * Execute a function as an authenticated user WITHOUT JWT claims.
+ * Used to test Scenario 4: "No JWT -> access denied".
  */
-export async function assertNoAccessWithoutTenant(config: RlsAssertionConfig): Promise<void> {
-  throw new Error(
-    `assertNoAccessWithoutTenant for '${config.table}' requires a running test database.`,
-  )
+export async function withoutJwt<T>(
+  // biome-ignore lint/suspicious/noExplicitAny: postgres.js types are complex
+  sql: any,
+  fn: (tx: unknown) => Promise<T>,
+): Promise<T> {
+  return sql.begin(async (tx: unknown) => {
+    // biome-ignore lint/suspicious/noExplicitAny: raw SQL template
+    const txAny = tx as any
+    await txAny`SELECT set_config('request.jwt.claims', '{}', true)`
+    await txAny`SET LOCAL ROLE authenticated`
+    return fn(tx)
+  })
 }
 
 /**
- * Creates a full RLS assertion suite template.
- * Returns a describe block factory for use in vitest.
+ * Verify that RLS is enabled on a table by checking pg_class.
  *
- * The 6 standard scenarios:
- * 1. Tenant A reads only A's data
- * 2. Tenant B reads only B's data
- * 3. Tenant A CANNOT read B's data
- * 4. No JWT -> access denied
- * 5. JWT with invalid tenant_id -> zero results
- * 6. Tenant A INSERT with B's tenant_id -> must fail
+ * Usage:
+ * ```ts
+ * const enabled = await isRlsEnabled(sql, 'notifications')
+ * expect(enabled).toBe(true)
+ * ```
  */
+export async function isRlsEnabled(
+  // biome-ignore lint/suspicious/noExplicitAny: postgres.js types are complex
+  sql: any,
+  tableName: string,
+): Promise<boolean> {
+  const rows = await sql`
+    SELECT relrowsecurity
+    FROM pg_class
+    WHERE relname = ${tableName}
+  `
+  return rows[0]?.relrowsecurity === true
+}
+
+/**
+ * Get all RLS policies for a table.
+ */
+export async function getPoliciesForTable(
+  // biome-ignore lint/suspicious/noExplicitAny: postgres.js types are complex
+  sql: any,
+  tableName: string,
+): Promise<Array<{ policyname: string; cmd: string; permissive: string }>> {
+  return sql`
+    SELECT policyname, cmd, permissive
+    FROM pg_policies
+    WHERE tablename = ${tableName}
+    ORDER BY policyname
+  `
+}
+
 export function createRlsScenarios(config: RlsAssertionConfig) {
   return {
     table: config.table,
@@ -81,7 +116,7 @@ export function createRlsScenarios(config: RlsAssertionConfig) {
       'Tenant A reads only own data',
       'Tenant B reads only own data',
       'Tenant A cannot read Tenant B data',
-      'No JWT returns access denied',
+      'No JWT returns zero rows',
       'Invalid tenant_id returns zero results',
       'Cross-tenant INSERT is rejected',
     ] as const,
@@ -89,13 +124,6 @@ export function createRlsScenarios(config: RlsAssertionConfig) {
   }
 }
 
-/**
- * Helper to create an isolation test suite for a domain entity.
- * Provides the describe/it structure — DB operations come from config callbacks.
- *
- * @example
- * createIsolationSuite('notification', createFn, getFn, listFn)
- */
 export function createIsolationSuite(
   entityName: string,
   _createFn: (tenantId: string) => Promise<{ id: string }>,

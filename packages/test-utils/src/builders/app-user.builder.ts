@@ -3,7 +3,7 @@ import type { AppUserRow } from '@appfy/core'
 export class AppUserBuilder {
   private data: AppUserRow = {
     id: crypto.randomUUID(),
-    tenantId: '',
+    tenantId: crypto.randomUUID(),
     userIdExternal: null,
     email: null,
     name: null,
@@ -61,9 +61,6 @@ export class AppUserBuilder {
   }
 
   build(): AppUserRow {
-    if (!this.data.tenantId) {
-      throw new Error('AppUserBuilder: tenantId is required. Use .withTenant()')
-    }
     return { ...this.data }
   }
 }

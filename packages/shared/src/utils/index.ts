@@ -1,2 +1,5 @@
+export { formatCurrency } from './currency.js'
 export { diffInSeconds, isFuture, isPast, toIsoString } from './date.js'
 export { formatCentsToBrl, slugify, truncate } from './format.js'
+export { sanitizeText } from './sanitize.js'
+export { isValidUUID } from './uuid.js'

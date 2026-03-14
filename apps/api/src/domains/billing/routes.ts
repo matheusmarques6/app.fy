@@ -19,5 +19,8 @@ export function createBillingRoutes(deps: Dependencies) {
   app.post('/checkout', authMiddleware, tenantMw, requireRoles('owner'), validate(checkoutSchema), handlers.checkout)
   app.post('/portal', authMiddleware, tenantMw, requireRoles('owner'), validate(portalSchema), handlers.portal)
 
+  // Subscription details — any authenticated member can view
+  app.get('/subscription', authMiddleware, tenantMw, handlers.subscription)
+
   return app
 }

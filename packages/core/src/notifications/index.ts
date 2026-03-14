@@ -1,3 +1,14 @@
+export type {
+  AbTestConfig,
+  AbTestResult,
+  AbVariantConfig,
+  AbVariantMetrics,
+} from './ab-testing.js'
+export {
+  calculateAbWinner,
+  createDefaultSplit,
+  validateAbSplit,
+} from './ab-testing.js'
 export { boletoRecoveryFlow } from './flows/boleto-recovery.flow.js'
 export { browseAbandonedFlow } from './flows/browse-abandoned.flow.js'
 // Flow definitions
@@ -20,7 +31,17 @@ export {
   validate,
 } from './pipeline/index.js'
 export { NotificationRepository } from './repository.js'
+export type { AuditLogger, NotificationServiceDeps } from './service.js'
 export { NotificationService } from './service.js'
+export {
+  assertValidDeliveryTransition,
+  isValidDeliveryTransition,
+} from './delivery-status-machine.js'
+export {
+  assertValidTransition,
+  getValidNextStatuses,
+  isValidTransition,
+} from './status-machine.js'
 export { boletoRecoveryTemplate } from './templates/boleto-recovery.template.js'
 export { browseAbandonedTemplate } from './templates/browse-abandoned.template.js'
 
@@ -33,6 +54,13 @@ export { trackingCreatedTemplate } from './templates/tracking-created.template.j
 export type { NotificationTemplate } from './templates/types.js'
 export { upsellTemplate } from './templates/upsell.template.js'
 export { welcomeTemplate } from './templates/welcome.template.js'
+export type { KnownVariable, TemplateVariables } from './template-engine.js'
+export {
+  extractVariables,
+  isKnownVariable,
+  KNOWN_VARIABLES,
+  renderTemplate,
+} from './template-engine.js'
 export type {
   CreateNotificationInput,
   Notification,
@@ -40,3 +68,20 @@ export type {
   PipelineResult,
   UpdateNotificationStatusInput,
 } from './types.js'
+export type {
+  DeliveryRecord,
+  DeliveryStatusRepository,
+  DeliveryStatusServiceDeps,
+} from './delivery-status.service.js'
+export { DeliveryStatusService } from './delivery-status.service.js'
+export type {
+  FrequencyCappingCache,
+  FrequencyCappingCheck,
+} from './frequency-capping.service.js'
+export { FrequencyCappingService } from './frequency-capping.service.js'
+export type {
+  AttributableDelivery,
+  AttributionRepository,
+  ConversionAttributionResult,
+} from './conversion-attribution.service.js'
+export { ConversionAttributionService } from './conversion-attribution.service.js'

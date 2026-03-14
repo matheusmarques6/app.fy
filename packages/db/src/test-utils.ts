@@ -1,6 +1,15 @@
 import { sql } from 'drizzle-orm'
 import type { Database } from './client.js'
-import { appUsers, devices, memberships, plans, tenants, users } from './schema/index.js'
+import {
+  appUsers,
+  devices,
+  memberships,
+  notificationDeliveries,
+  notifications,
+  plans,
+  tenants,
+  users,
+} from './schema/index.js'
 
 /** Truncate all tables in dependency-safe order */
 export async function truncateAll(db: Database) {
@@ -128,4 +137,97 @@ export async function seedDevice(
       })
       .returning(),
   )
+}
+
+/** Seed a notification */
+export async function seedNotification(
+  db: Database,
+  tenantId: string,
+  overrides: {
+    title?: string
+    body?: string
+    type?: 'manual' | 'automated'
+    status?: 'draft' | 'scheduled' | 'sending' | 'sent' | 'completed' | 'failed'
+    createdAt?: Date
+  } = {},
+) {
+  return first(
+    await db
+      .insert(notifications)
+      .values({
+        tenantId,
+        title: overrides.title ?? 'Test Notification',
+        body: overrides.body ?? 'Test notification body',
+        type: overrides.type ?? 'manual',
+        status: overrides.status ?? 'draft',
+        createdAt: overrides.createdAt ?? new Date(),
+      })
+      .returning(),
+  )
+}
+
+/** Seed a delivery (creates notification + app user + device if not provided) */
+export async function seedDelivery(
+  db: Database,
+  params: {
+    tenantId: string
+    status?: 'pending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'converted' | 'failed'
+    createdAt?: Date
+    notificationId?: string
+    appUserId?: string
+    deviceId?: string
+  },
+) {
+  const notificationId =
+    params.notificationId ?? (await seedNotification(db, params.tenantId)).id
+
+  const appUserId = params.appUserId ?? (await seedAppUser(db, params.tenantId)).id
+
+  const deviceId =
+    params.deviceId ?? (await seedDevice(db, params.tenantId, appUserId)).id
+
+  return first(
+    await db
+      .insert(notificationDeliveries)
+      .values({
+        tenantId: params.tenantId,
+        notificationId,
+        deviceId,
+        appUserId,
+        status: params.status ?? 'pending',
+        createdAt: params.createdAt ?? new Date(),
+      })
+      .returning(),
+  )
+}
+
+/** Bulk insert 10K deliveries for performance testing */
+export async function seed10KDeliveries(db: Database, tenantId: string) {
+  const notification = await seedNotification(db, tenantId, {
+    title: 'Perf Test Notification',
+  })
+
+  const userCount = 100
+  const deliveriesPerUser = 100
+
+  for (let i = 0; i < userCount; i++) {
+    const appUser = await seedAppUser(db, tenantId, {
+      email: `perf-${i}@test.com`,
+      userIdExternal: `perf-ext-${i}`,
+    })
+    const device = await seedDevice(db, tenantId, appUser.id)
+
+    const deliveryValues = Array.from({ length: deliveriesPerUser }, () => ({
+      tenantId,
+      notificationId: notification.id,
+      deviceId: device.id,
+      appUserId: appUser.id,
+      status: 'sent' as const,
+      sentAt: new Date(),
+    }))
+
+    await db.insert(notificationDeliveries).values(deliveryValues)
+  }
+
+  return { notification, totalDeliveries: userCount * deliveriesPerUser }
 }

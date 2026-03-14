@@ -1,4 +1,5 @@
 import { index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { appUsers } from './app-users.js'
 import { devices } from './devices.js'
 import { notifications } from './notifications.js'
 import { tenants } from './tenants.js'
@@ -23,6 +24,7 @@ export const notificationDeliveries = pgTable(
     deviceId: uuid('device_id')
       .notNull()
       .references(() => devices.id),
+    appUserId: uuid('app_user_id').references(() => appUsers.id),
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id),
@@ -34,6 +36,7 @@ export const notificationDeliveries = pgTable(
     clickedAt: timestamp('clicked_at', { withTimezone: true }),
     convertedAt: timestamp('converted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index('notification_deliveries_tenant_status_created_idx').on(

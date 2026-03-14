@@ -27,8 +27,18 @@ export function createDeviceHandlers(deps: Dependencies) {
         appUserId: body.appUserId,
         deviceToken: body.deviceToken,
         platform: body.platform,
+        ...(body.osVersion !== undefined && { osVersion: body.osVersion }),
+        ...(body.appVersion !== undefined && { appVersion: body.appVersion }),
       })
       return c.json({ data: device }, 201)
+    },
+
+    /** DELETE /devices/:id — Deactivate device (soft delete) */
+    async deactivate(c: Context) {
+      const tenantId = c.get('tenantId') as string
+      const id = c.req.param('id')!
+      await deps.deviceService.deactivate(tenantId, id)
+      return c.json({ data: { id, deactivated: true } })
     },
   }
 }

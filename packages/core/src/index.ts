@@ -2,6 +2,17 @@
 export type { Dependencies, FactoryConfig } from './factory.js'
 export { createDependencies } from './factory.js'
 
+// Audit
+export type { AuditLogEntry, CreateAuditLogInput } from './audit/index.js'
+export { AuditLogRepository, AuditLogService } from './audit/index.js'
+
+// Credentials
+export type { CredentialProvider, CredentialStoreDeps } from './credentials/index.js'
+export { CredentialService } from './credentials/index.js'
+
+// Security
+export { SsrfError, validateUrl, isUrlAllowed } from './security/index.js'
+
 // Domain Errors
 
 export type {
@@ -12,15 +23,21 @@ export type {
 } from './analytics/index.js'
 // Analytics
 export { AnalyticsRepository, AnalyticsService } from './analytics/index.js'
-export type { AppUserRow, CreateAppUserInput, UpdateAppUserInput } from './app-users/index.js'
+export type {
+  AppUserRow,
+  AppUserValidationInput,
+  AppUserValidationResult,
+  CreateAppUserInput,
+  UpdateAppUserInput,
+} from './app-users/index.js'
 // App Users
-export { AppUserRepository, AppUserService } from './app-users/index.js'
-export type { AutomationConfigRow, UpdateAutomationInput } from './automations/index.js'
+export { AppUserRepository, AppUserService, isValidEmail, validateAppUserInput } from './app-users/index.js'
+export type { AutomationConfigRow, AutomationJobPayload, QueueAdapter, UpdateAutomationInput } from './automations/index.js'
 // Automations
-export { AutomationRepository, AutomationService } from './automations/index.js'
-export type { BillingWebhookEvent, CheckoutSession, Subscription } from './billing/index.js'
+export { AutomationRepository, AutomationService, AutomationTriggerService, DEFAULT_DELAYS } from './automations/index.js'
+export type { BillingServiceDeps, BillingWebhookEvent, CheckoutSession, PlanLimitCheckResult, PlanPriceRegistry, StripeCheckoutResult, StripeClient, StripeSubscription, Subscription } from './billing/index.js'
 // Billing
-export { BillingService, StripeProvider } from './billing/index.js'
+export { BillingService, checkPlanLimit, PlanLimitService, StripeProvider } from './billing/index.js'
 export { addSeconds, isExpired, now } from './common/date.js'
 // Common utilities
 export {
@@ -40,13 +57,19 @@ export { EncryptionService } from './encryption/service.js'
 export type { MembershipRow } from './memberships/index.js'
 // Memberships
 export { MembershipRepository } from './memberships/index.js'
+export type { AppEventRow, CreateEventInput, EventFilters, IngestEventInput } from './events/index.js'
+export type { EventIngestionDeps, EventQueueAdapter, EventHistoryLookup, EventProcessorDeps } from './events/index.js'
+// Events
+export { EventRepository, EventIngestionService, EventProcessorService } from './events/index.js'
 export {
   AppUserNotFoundError,
   AutomationNotFoundError,
   BillingError,
+  DeliveryNotFoundError,
   DeviceNotFoundError,
   DomainError,
   EncryptionError,
+  InvalidEventTypeError,
   InvalidStatusTransitionError,
   MissingTenantIdError,
   NotificationLimitExceededError,
@@ -55,13 +78,36 @@ export {
   TenantNotFoundError,
 } from './errors.js'
 export type {
+  DeliveryRecord,
+  DeliveryStatusRepository,
+  DeliveryStatusServiceDeps,
+  FrequencyCappingCache,
+  FrequencyCappingCheck,
+  AttributableDelivery,
+  AttributionRepository,
+  ConversionAttributionResult,
+} from './notifications/index.js'
+export {
+  DeliveryStatusService,
+  FrequencyCappingService,
+  ConversionAttributionService,
+} from './notifications/index.js'
+export type {
+  AbTestConfig,
+  AbTestResult,
+  AbVariantConfig,
+  AbVariantMetrics,
+  AuditLogger,
   CreateNotificationInput,
   FlowDefinition,
+  KnownVariable,
   Notification,
+  NotificationServiceDeps,
   NotificationTemplate,
   PipelineContext,
   PipelineResult,
   PipelineStep,
+  TemplateVariables,
   UpdateNotificationStatusInput,
 } from './notifications/index.js'
 // Notifications
@@ -74,9 +120,21 @@ export {
   cartAbandonedTemplate,
   checkoutAbandonedFlow,
   checkoutAbandonedTemplate,
+  assertValidDeliveryTransition,
+  assertValidTransition,
+  calculateAbWinner,
+  createDefaultSplit,
   executePipeline,
+  extractVariables,
+  getValidNextStatuses,
+  isKnownVariable,
+  isValidDeliveryTransition,
+  isValidTransition,
+  KNOWN_VARIABLES,
   NotificationRepository,
   NotificationService,
+  renderTemplate,
+  validateAbSplit,
   orderConfirmedFlow,
   orderConfirmedTemplate,
   pipelineSteps,
@@ -97,7 +155,16 @@ export type {
   PushResult,
 } from './push/index.js'
 // Push
-export { OneSignalProvider, PushService } from './push/index.js'
+export { DrizzleDeliveryRepository, OneSignalProvider, PushDispatchService, PushService } from './push/index.js'
+export type {
+  CreateDeliveryInput,
+  DeliveryRepository,
+  DeliveryRow,
+  NotificationLookup,
+  PushDispatchDeps,
+  PushDispatchResult,
+  TenantLookup,
+} from './push/index.js'
 export type {
   AnalyticsQueuePayload,
   DataIngestionPayload,
@@ -114,6 +181,29 @@ export {
 } from './queues/index.js'
 // Base Repository
 export { BaseRepository } from './repositories/base.repository.js'
+export type {
+  CreateSegmentInput,
+  RefreshResult,
+  RuleOperator,
+  SegmentCondition,
+  SegmentMembershipRow,
+  SegmentRow,
+  SegmentRuleGroup,
+  UpdateSegmentInput,
+  UserData,
+} from './segments/index.js'
+// Segments
+export {
+  evaluateCondition,
+  evaluateSegmentRules,
+  filterUsersByRules,
+  isValidOperator,
+  SegmentNotFoundError,
+  SegmentRefreshService,
+  SegmentRepository,
+  SegmentService,
+  validateSegmentRules,
+} from './segments/index.js'
 export type { CreateTenantInput, TenantRow, UpdateTenantInput } from './tenants/index.js'
 // Tenants
 export { TenantRepository, TenantService } from './tenants/index.js'

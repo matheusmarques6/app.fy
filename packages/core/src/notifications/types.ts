@@ -16,6 +16,7 @@ export interface Notification {
   readonly status: NotificationStatus
   readonly createdBy: string | null
   readonly abVariant: 'a' | 'b' | null
+  readonly abConfig: unknown
   readonly createdAt: Date
   readonly updatedAt: Date
 }
@@ -32,6 +33,7 @@ export interface CreateNotificationInput {
   readonly scheduledAt?: Date
   readonly createdBy?: string
   readonly abVariant?: 'a' | 'b'
+  readonly abConfig?: unknown
 }
 
 /** Input for updating notification status */

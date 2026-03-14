@@ -5,6 +5,7 @@ export interface DeliveryRow {
   readonly tenantId: string
   readonly notificationId: string
   readonly deviceId: string
+  readonly appUserId: string | null
   readonly status: DeliveryStatus
   readonly sentAt: Date | null
   readonly deliveredAt: Date | null
@@ -13,14 +14,16 @@ export interface DeliveryRow {
   readonly convertedAt: Date | null
   readonly errorMessage: string | null
   readonly createdAt: Date
+  readonly updatedAt: Date
 }
 
 export class DeliveryBuilder {
   private data: DeliveryRow = {
     id: crypto.randomUUID(),
-    tenantId: '',
+    tenantId: crypto.randomUUID(),
     notificationId: crypto.randomUUID(),
     deviceId: crypto.randomUUID(),
+    appUserId: null,
     status: 'pending',
     sentAt: null,
     deliveredAt: null,
@@ -29,6 +32,7 @@ export class DeliveryBuilder {
     convertedAt: null,
     errorMessage: null,
     createdAt: new Date(),
+    updatedAt: new Date(),
   }
 
   withId(id: string): this {
@@ -48,6 +52,11 @@ export class DeliveryBuilder {
 
   withDevice(deviceId: string): this {
     this.data = { ...this.data, deviceId }
+    return this
+  }
+
+  withAppUser(appUserId: string): this {
+    this.data = { ...this.data, appUserId }
     return this
   }
 
@@ -91,9 +100,6 @@ export class DeliveryBuilder {
   }
 
   build(): DeliveryRow {
-    if (!this.data.tenantId) {
-      throw new Error('DeliveryBuilder: tenantId is required. Use .withTenant()')
-    }
     return { ...this.data }
   }
 }

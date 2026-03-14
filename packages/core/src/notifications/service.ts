@@ -1,24 +1,69 @@
 import type { NotificationStatus, PaginatedResponse, PaginationParams } from '@appfy/shared'
+import { sanitizeText } from '@appfy/shared'
 import { buildPaginatedResponse, normalizePagination } from '../common/pagination.js'
-import { InvalidStatusTransitionError, NotificationNotFoundError } from '../errors.js'
+import { DomainError, InvalidStatusTransitionError, NotificationNotFoundError } from '../errors.js'
 import type { NotificationRepository } from './repository.js'
+import { isValidTransition } from './status-machine.js'
 import type { CreateNotificationInput, Notification } from './types.js'
 
-/** Valid status transitions */
-const validTransitions: Record<string, NotificationStatus[]> = {
-  draft: ['approved'],
-  approved: ['scheduled', 'sending'],
-  scheduled: ['sending'],
-  sending: ['sent', 'failed'],
-  sent: [],
-  failed: ['approved'],
+export interface AuditLogger {
+  log(
+    tenantId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+    metadata?: Record<string, unknown>,
+    userId?: string,
+  ): Promise<void>
+}
+
+export interface NotificationServiceDeps {
+  notificationRepo: NotificationRepository
+  auditLog?: AuditLogger
 }
 
 export class NotificationService {
-  constructor(private readonly notificationRepo: NotificationRepository) {}
+  private readonly notificationRepo: NotificationRepository
+  private readonly auditLog: AuditLogger | undefined
+
+  constructor(deps: NotificationServiceDeps | NotificationRepository) {
+    if ('notificationRepo' in deps) {
+      this.notificationRepo = deps.notificationRepo
+      this.auditLog = deps.auditLog
+    } else {
+      this.notificationRepo = deps
+      this.auditLog = undefined
+    }
+  }
 
   async create(tenantId: string, input: CreateNotificationInput): Promise<Notification> {
-    return this.notificationRepo.create(tenantId, input)
+    // Validate title
+    if (!input.title || input.title.trim() === '') {
+      throw new DomainError('Notification title is required', 'VALIDATION_ERROR')
+    }
+
+    // Sanitize XSS
+    const sanitizedInput: CreateNotificationInput = {
+      ...input,
+      title: sanitizeText(input.title),
+      body: sanitizeText(input.body),
+    }
+
+    const notification = await this.notificationRepo.create(tenantId, sanitizedInput)
+
+    // Audit log
+    if (this.auditLog) {
+      await this.auditLog.log(
+        tenantId,
+        'notification.created',
+        'notification',
+        notification.id,
+        { type: notification.type, title: notification.title },
+        input.createdBy,
+      )
+    }
+
+    return notification
   }
 
   async getById(tenantId: string, id: string): Promise<Notification> {
@@ -32,9 +77,10 @@ export class NotificationService {
   async list(
     tenantId: string,
     pagination?: Partial<PaginationParams>,
+    filters?: { status?: NotificationStatus; type?: string },
   ): Promise<PaginatedResponse<Notification>> {
     const normalized = normalizePagination(pagination)
-    const { data, total } = await this.notificationRepo.list(tenantId, normalized)
+    const { data, total } = await this.notificationRepo.list(tenantId, normalized, filters)
     return buildPaginatedResponse(data, total, normalized)
   }
 
@@ -45,15 +91,29 @@ export class NotificationService {
     sentAt?: Date,
   ): Promise<Notification> {
     const notification = await this.getById(tenantId, id)
-    const allowed = validTransitions[notification.status] ?? []
-    if (!allowed.includes(newStatus)) {
+
+    if (!isValidTransition(notification.status, newStatus)) {
       throw new InvalidStatusTransitionError(notification.status, newStatus)
     }
-    return this.notificationRepo.updateStatus(tenantId, id, newStatus, sentAt)
+
+    const updated = await this.notificationRepo.updateStatus(tenantId, id, newStatus, sentAt)
+
+    if (this.auditLog) {
+      await this.auditLog.log(tenantId, 'notification.status_changed', 'notification', id, {
+        from: notification.status,
+        to: newStatus,
+      })
+    }
+
+    return updated
   }
 
-  async dispatch(tenantId: string, id: string): Promise<void> {
-    await this.updateStatus(tenantId, id, 'sending')
-    // Actual dispatch delegates to pipeline via queue — stub for now
+  async delete(tenantId: string, id: string): Promise<void> {
+    await this.getById(tenantId, id)
+    await this.notificationRepo.delete(tenantId, id)
+
+    if (this.auditLog) {
+      await this.auditLog.log(tenantId, 'notification.deleted', 'notification', id)
+    }
   }
 }

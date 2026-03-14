@@ -1,0 +1,6 @@
+export { EventRepository } from './repository.js'
+export { EventIngestionService } from './ingestion.service.js'
+export type { EventIngestionDeps, EventQueueAdapter } from './ingestion.service.js'
+export { EventProcessorService } from './event-processor.service.js'
+export type { EventHistoryLookup, EventProcessorDeps } from './event-processor.service.js'
+export type { AppEventRow, CreateEventInput, EventFilters, IngestEventInput } from './types.js'

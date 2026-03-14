@@ -1,16 +1,24 @@
 import type { Database } from '@appfy/db'
 import { AnalyticsRepository, AnalyticsService } from './analytics/index.js'
 import { AppUserRepository, AppUserService } from './app-users/index.js'
+import { AuditLogRepository, AuditLogService } from './audit/index.js'
 import { AutomationRepository, AutomationService } from './automations/index.js'
 import { BillingService } from './billing/index.js'
+import type { PlanPriceRegistry } from './billing/index.js'
+import type { StripeClient } from './billing/stripe.provider.js'
 import { StripeProvider } from './billing/stripe.provider.js'
 import { DeviceRepository, DeviceService } from './devices/index.js'
 import { EncryptionService } from './encryption/service.js'
+import { EventRepository, EventIngestionService } from './events/index.js'
 import { MembershipRepository } from './memberships/index.js'
+import { DrizzleDeliveryRepository } from './notifications/delivery.repository.js'
 import { NotificationRepository, NotificationService } from './notifications/index.js'
 import { OneSignalProvider } from './push/onesignal.provider.js'
+import { PushDispatchService } from './push/push-dispatch.service.js'
+import type { DeliveryRepository } from './push/push-dispatch.service.js'
 import type { PushProvider } from './push/push-provider.interface.js'
 import { PushService } from './push/push.service.js'
+import { SegmentRepository, SegmentService } from './segments/index.js'
 import { TenantRepository, TenantService } from './tenants/index.js'
 
 export interface Dependencies {
@@ -21,6 +29,9 @@ export interface Dependencies {
   deviceRepo: DeviceRepository
   automationRepo: AutomationRepository
   analyticsRepo: AnalyticsRepository
+  segmentRepo: SegmentRepository
+  auditLogRepo: AuditLogRepository
+  eventRepo: EventRepository
   pushProvider: PushProvider
   stripeProvider: StripeProvider
   notificationService: NotificationService
@@ -29,14 +40,20 @@ export interface Dependencies {
   deviceService: DeviceService
   automationService: AutomationService
   analyticsService: AnalyticsService
+  segmentService: SegmentService
   billingService: BillingService
   pushService: PushService
+  pushDispatchService: PushDispatchService
   encryptionService: EncryptionService
+  auditLogService: AuditLogService
+  eventIngestionService: EventIngestionService
 }
 
 export interface FactoryConfig {
   db: Database
-  stripeSecretKey: string
+  stripeClient: StripeClient
+  stripeWebhookSecret: string
+  planPriceRegistry: PlanPriceRegistry
   oneSignalApiKey: string
   encryptionSecret: string
 }
@@ -52,20 +69,46 @@ export function createDependencies(
   const deviceRepo = overrides?.deviceRepo ?? new DeviceRepository(config.db)
   const automationRepo = overrides?.automationRepo ?? new AutomationRepository(config.db)
   const analyticsRepo = overrides?.analyticsRepo ?? new AnalyticsRepository(config.db)
+  const segmentRepo = overrides?.segmentRepo ?? new SegmentRepository(config.db)
+  const eventRepo = overrides?.eventRepo ?? new EventRepository(config.db)
   const pushProvider = overrides?.pushProvider ?? new OneSignalProvider(config.oneSignalApiKey)
-  const stripeProvider = overrides?.stripeProvider ?? new StripeProvider(config.stripeSecretKey)
+  const stripeProvider = overrides?.stripeProvider ?? new StripeProvider(config.stripeClient)
 
   const notificationService =
     overrides?.notificationService ?? new NotificationService(notificationRepo)
   const tenantService = overrides?.tenantService ?? new TenantService(tenantRepo)
   const appUserService = overrides?.appUserService ?? new AppUserService(appUserRepo)
-  const deviceService = overrides?.deviceService ?? new DeviceService(deviceRepo)
+  const deviceService =
+    overrides?.deviceService ?? new DeviceService({ deviceRepo, appUserRepo })
   const automationService = overrides?.automationService ?? new AutomationService(automationRepo)
   const analyticsService = overrides?.analyticsService ?? new AnalyticsService(analyticsRepo)
-  const billingService = overrides?.billingService ?? new BillingService(config.stripeSecretKey)
+  const segmentService = overrides?.segmentService ?? new SegmentService(segmentRepo)
   const pushService = overrides?.pushService ?? new PushService(pushProvider)
   const encryptionService =
     overrides?.encryptionService ?? new EncryptionService(config.encryptionSecret)
+  const auditLogRepo = overrides?.auditLogRepo ?? new AuditLogRepository(config.db)
+  const auditLogService = overrides?.auditLogService ?? new AuditLogService(auditLogRepo)
+  const billingService = overrides?.billingService ?? new BillingService({
+    stripeProvider,
+    tenantRepo,
+    auditLogService,
+    planPriceRegistry: config.planPriceRegistry,
+    webhookSecret: config.stripeWebhookSecret,
+    automationRepo,
+  })
+  const deliveryRepo: DeliveryRepository = new DrizzleDeliveryRepository(config.db)
+  const pushDispatchService =
+    overrides?.pushDispatchService ??
+    new PushDispatchService({
+      deviceRepo,
+      deliveryRepo,
+      pushProvider,
+      notificationRepo,
+      tenantRepo,
+    })
+  const eventIngestionService =
+    overrides?.eventIngestionService ??
+    new EventIngestionService({ eventRepo })
 
   return {
     notificationRepo,
@@ -75,6 +118,9 @@ export function createDependencies(
     deviceRepo,
     automationRepo,
     analyticsRepo,
+    segmentRepo,
+    auditLogRepo,
+    eventRepo,
     pushProvider,
     stripeProvider,
     notificationService,
@@ -83,8 +129,12 @@ export function createDependencies(
     deviceService,
     automationService,
     analyticsService,
+    segmentService,
     billingService,
     pushService,
+    pushDispatchService,
     encryptionService,
+    auditLogService,
+    eventIngestionService,
   }
 }

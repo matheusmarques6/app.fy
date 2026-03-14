@@ -4,7 +4,7 @@ import type { FlowType } from '@appfy/shared'
 export class AutomationConfigBuilder {
   private data: AutomationConfigRow = {
     id: crypto.randomUUID(),
-    tenantId: '',
+    tenantId: crypto.randomUUID(),
     flowType: 'cart_abandoned',
     isEnabled: true,
     delaySeconds: 3600,
@@ -50,9 +50,6 @@ export class AutomationConfigBuilder {
   }
 
   build(): AutomationConfigRow {
-    if (!this.data.tenantId) {
-      throw new Error('AutomationConfigBuilder: tenantId is required. Use .withTenant()')
-    }
     return { ...this.data }
   }
 }

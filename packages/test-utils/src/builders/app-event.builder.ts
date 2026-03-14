@@ -13,7 +13,7 @@ export interface AppEventRow {
 export class AppEventBuilder {
   private data: AppEventRow = {
     id: crypto.randomUUID(),
-    tenantId: '',
+    tenantId: crypto.randomUUID(),
     appUserId: null,
     deviceId: null,
     eventType: 'app_opened',
@@ -77,9 +77,6 @@ export class AppEventBuilder {
   }
 
   build(): AppEventRow {
-    if (!this.data.tenantId) {
-      throw new Error('AppEventBuilder: tenantId is required. Use .withTenant()')
-    }
     return { ...this.data }
   }
 }

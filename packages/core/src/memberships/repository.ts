@@ -1,4 +1,6 @@
+import { memberships } from '@appfy/db'
 import type { MembershipRole } from '@appfy/shared'
+import { and, eq } from 'drizzle-orm'
 import { BaseRepository } from '../repositories/base.repository.js'
 
 export interface MembershipRow {
@@ -11,8 +13,13 @@ export interface MembershipRow {
 }
 
 export class MembershipRepository extends BaseRepository {
-  async findByUserAndTenant(tenantId: string, _userId: string): Promise<MembershipRow | undefined> {
+  async findByUserAndTenant(tenantId: string, userId: string): Promise<MembershipRow | undefined> {
     this.assertTenantId(tenantId)
-    throw new Error('Not implemented')
+    const rows = await this.db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.tenantId, tenantId), eq(memberships.userId, userId)))
+      .limit(1)
+    return rows[0] as MembershipRow | undefined
   }
 }

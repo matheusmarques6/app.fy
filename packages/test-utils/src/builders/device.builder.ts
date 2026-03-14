@@ -4,8 +4,8 @@ import type { DevicePlatform } from '@appfy/shared'
 export class DeviceBuilder {
   private data: DeviceRow = {
     id: crypto.randomUUID(),
-    tenantId: '',
-    appUserId: '',
+    tenantId: crypto.randomUUID(),
+    appUserId: crypto.randomUUID(),
     deviceToken: `token-${crypto.randomUUID().slice(0, 8)}`,
     platform: 'android',
     osVersion: null,
@@ -70,12 +70,6 @@ export class DeviceBuilder {
   }
 
   build(): DeviceRow {
-    if (!this.data.tenantId) {
-      throw new Error('DeviceBuilder: tenantId is required. Use .withTenant()')
-    }
-    if (!this.data.appUserId) {
-      throw new Error('DeviceBuilder: appUserId is required. Use .withUser()')
-    }
     return { ...this.data }
   }
 }

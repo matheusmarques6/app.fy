@@ -3,12 +3,13 @@
 export type {
   KlaviyoAdapter,
   KlaviyoConfig,
+  KlaviyoHttpClient,
   KlaviyoMetric,
   KlaviyoProfile,
   KlaviyoSegment,
 } from './klaviyo/index.js'
 // Klaviyo
-export { KlaviyoRestAdapter } from './klaviyo/index.js'
+export { KlaviyoFetchClient, KlaviyoRestAdapter } from './klaviyo/index.js'
 export type { NuvemshopConfig, NuvemshopWebhookTopic } from './nuvemshop/index.js'
 // Nuvemshop
 export {

@@ -28,8 +28,9 @@ export class NotificationRepositorySpy extends SpyBase {
   async list(
     tenantId: string,
     pagination: PaginationParams,
+    filters?: { status?: NotificationStatus; type?: string },
   ): Promise<{ data: Notification[]; total: number }> {
-    this.trackCall('list', [tenantId, pagination])
+    this.trackCall('list', [tenantId, pagination, filters])
     return this.listResult
   }
 
@@ -41,5 +42,17 @@ export class NotificationRepositorySpy extends SpyBase {
   ): Promise<Notification> {
     this.trackCall('updateStatus', [tenantId, id, status, sentAt])
     return this.result ?? new NotificationBuilder().withTenant(tenantId).withStatus(status).build()
+  }
+
+  async delete(tenantId: string, id: string): Promise<void> {
+    this.trackCall('delete', [tenantId, id])
+  }
+
+  async count(
+    tenantId: string,
+    filters?: { status?: NotificationStatus; type?: string },
+  ): Promise<number> {
+    this.trackCall('count', [tenantId, filters])
+    return this.listResult.total
   }
 }

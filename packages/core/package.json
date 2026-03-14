@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@appfy/db": "workspace:*",
-    "@appfy/shared": "workspace:*"
+    "@appfy/shared": "workspace:*",
+    "drizzle-orm": "^0.44.2"
   },
   "devDependencies": {
     "@types/node": "^22.16.4"

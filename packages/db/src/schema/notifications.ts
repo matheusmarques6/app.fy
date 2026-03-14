@@ -18,10 +18,10 @@ export const flowTypeEnum = pgEnum('flow_type', [
 
 export const notificationStatusEnum = pgEnum('notification_status', [
   'draft',
-  'approved',
   'scheduled',
   'sending',
   'sent',
+  'completed',
   'failed',
 ])
 
@@ -43,6 +43,7 @@ export const notifications = pgTable('notifications', {
   sentAt: timestamp('sent_at', { withTimezone: true }),
   createdBy: uuid('created_by').references(() => users.id),
   abVariant: abVariantEnum('ab_variant'),
+  abConfig: jsonb('ab_config'),
   status: notificationStatusEnum().notNull().default('draft'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

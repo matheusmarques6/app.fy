@@ -14,7 +14,9 @@ function domainErrorToStatus(error: DomainError): ContentfulStatusCode {
     code === 'NOTIFICATION_NOT_FOUND' ||
     code === 'APP_USER_NOT_FOUND' ||
     code === 'DEVICE_NOT_FOUND' ||
-    code === 'AUTOMATION_NOT_FOUND'
+    code === 'AUTOMATION_NOT_FOUND' ||
+    code === 'SEGMENT_NOT_FOUND' ||
+    code === 'DELIVERY_NOT_FOUND'
   ) {
     return 404
   }
@@ -22,14 +24,16 @@ function domainErrorToStatus(error: DomainError): ContentfulStatusCode {
   // 400 — Validation / Bad Request
   if (
     code === 'INVALID_STATUS_TRANSITION' ||
-    code === 'MISSING_TENANT_ID'
+    code === 'MISSING_TENANT_ID' ||
+    code === 'VALIDATION_ERROR' ||
+    code === 'INVALID_EVENT_TYPE'
   ) {
     return 400
   }
 
-  // 403 — Forbidden / Limit
+  // 402 — Payment Required (plan limit exceeded)
   if (code === 'NOTIFICATION_LIMIT_EXCEEDED') {
-    return 403
+    return 402
   }
 
   // 422 — Unprocessable Entity (generic domain error)

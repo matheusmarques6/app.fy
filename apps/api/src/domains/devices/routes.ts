@@ -17,6 +17,7 @@ export function createDeviceRoutes(deps: Dependencies) {
 
   app.get('/', handlers.list)
   app.post('/', requireRoles('owner', 'editor'), validate(registerDeviceSchema), handlers.register)
+  app.delete('/:id', requireRoles('owner', 'editor'), handlers.deactivate)
 
   return app
 }

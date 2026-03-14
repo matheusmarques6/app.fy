@@ -1,3 +1,5 @@
 export type { AutomationConfigRow, UpdateAutomationInput } from './repository.js'
 export { AutomationRepository } from './repository.js'
 export { AutomationService } from './service.js'
+export type { AutomationJobPayload, QueueAdapter } from './trigger.service.js'
+export { AutomationTriggerService, DEFAULT_DELAYS } from './trigger.service.js'

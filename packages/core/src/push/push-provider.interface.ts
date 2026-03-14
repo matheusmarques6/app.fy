@@ -21,9 +21,9 @@ export interface PushAppConfig {
 export interface PushNotificationPayload {
   readonly title: string
   readonly body: string
-  readonly imageUrl?: string
-  readonly targetUrl?: string
-  readonly data?: Record<string, string>
+  readonly imageUrl?: string | undefined
+  readonly targetUrl?: string | undefined
+  readonly data?: Record<string, string> | undefined
   readonly playerIds: string[]
 }
 

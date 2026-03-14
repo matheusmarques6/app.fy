@@ -8,9 +8,11 @@ export {
 export { RequestBuilder } from './request-builder.js'
 export type { RlsAssertionConfig } from './rls-asserter.js'
 export {
-  assertNoAccessWithoutTenant,
-  assertTenantIsolation,
   createIsolationSuite,
   createRlsScenarios,
+  getPoliciesForTable,
+  isRlsEnabled,
+  withoutJwt,
+  withTenantJwt,
 } from './rls-asserter.js'
 export { cleanTestDatabase, setupTestDatabase, teardownTestDatabase } from './setup-db.js'
