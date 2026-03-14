@@ -47,7 +47,7 @@ import {
   segments,
   appUserSegments,
 } from '@appfy/db'
-import { eq, and, count, sql } from 'drizzle-orm'
+import { eq, and, count } from 'drizzle-orm'
 
 export const TENANT_A = 'tenant-a-isolation'
 export const TENANT_B = 'tenant-b-isolation'
