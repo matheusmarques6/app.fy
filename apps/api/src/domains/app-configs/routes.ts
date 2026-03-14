@@ -21,5 +21,9 @@ export function createAppConfigRoutes(deps: Dependencies) {
   // Editor + owner can update
   app.put('/', requireRoles('owner', 'editor'), validate(updateAppConfigSchema), handlers.update)
 
+  // Build management — owner only
+  app.post('/build', requireRoles('owner'), handlers.triggerBuild)
+  app.get('/build/status', handlers.buildStatus)
+
   return app
 }

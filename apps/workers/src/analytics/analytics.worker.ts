@@ -21,9 +21,8 @@ const KNOWN_METRIC_TYPES = new Set([
  * 1. Validate payload shape and metric type
  * 2. Log the received aggregation request with all metadata
  * 3. Aggregate metrics for the given tenant and period
- * 4. UPSERT aggregated data (idempotent -- reprocessing does not duplicate)
+ * 4. Log aggregated results (MVP: on-the-fly via existing repo queries)
  *
- * Steps 3-4 remain as TODO stubs -- they depend on services not yet built.
  * On failure, BullMQ retries with exponential backoff (3 attempts).
  */
 export function createAnalyticsProcessor(deps: Dependencies, log: Logger) {
@@ -71,11 +70,13 @@ export function createAnalyticsProcessor(deps: Dependencies, log: Logger) {
       })
     }
 
-    // TODO: Run aggregation queries for the given metric type and period
-    // const metrics = await deps.analyticsService.aggregate(tenantId, metricType, period)
+    // Aggregate metrics via the analytics service
+    const analyticsPeriod = {
+      from: new Date(period.from),
+      to: new Date(period.to),
+    }
 
-    // TODO: UPSERT aggregated metrics (idempotent)
-    // await deps.analyticsService.upsertMetrics(tenantId, metricType, period, metrics)
+    const overview = await deps.analyticsService.aggregate(tenantId, analyticsPeriod)
 
     log.info('Analytics aggregation completed', {
       jobId: job.id,
@@ -83,6 +84,11 @@ export function createAnalyticsProcessor(deps: Dependencies, log: Logger) {
       metricType,
       periodFrom: period.from,
       periodTo: period.to,
+      totalSent: overview.totalSent,
+      totalDelivered: overview.totalDelivered,
+      totalConverted: overview.totalConverted,
+      deliveryRate: overview.deliveryRate,
+      conversionRate: overview.conversionRate,
     })
   }
 }

@@ -15,6 +15,8 @@ export function createAnalyticsRoutes(deps: Dependencies) {
   app.get('/overview', handlers.overview)
   app.get('/notifications/:id', handlers.notificationMetrics)
   app.get('/flows', handlers.flowMetrics)
+  app.get('/revenue', handlers.revenue)
+  app.get('/top-notifications', handlers.topNotifications)
 
   return app
 }

@@ -1,12 +1,16 @@
 import type { Database } from '@appfy/db'
 import { AnalyticsRepository, AnalyticsService } from './analytics/index.js'
+import { AppConfigRepository, AppConfigService } from './app-configs/index.js'
 import { AppUserRepository, AppUserService } from './app-users/index.js'
 import { AuditLogRepository, AuditLogService } from './audit/index.js'
 import { AutomationRepository, AutomationService } from './automations/index.js'
 import { BillingService } from './billing/index.js'
 import type { PlanPriceRegistry } from './billing/index.js'
+import type { IdempotencyStore } from './billing/idempotency.js'
+import { InMemoryIdempotencyStore } from './billing/idempotency.js'
 import type { StripeClient } from './billing/stripe.provider.js'
 import { StripeProvider } from './billing/stripe.provider.js'
+import { BuildService } from './builds/index.js'
 import { DeviceRepository, DeviceService } from './devices/index.js'
 import { EncryptionService } from './encryption/service.js'
 import { EventRepository, EventIngestionService } from './events/index.js'
@@ -29,6 +33,7 @@ export interface Dependencies {
   deviceRepo: DeviceRepository
   automationRepo: AutomationRepository
   analyticsRepo: AnalyticsRepository
+  appConfigRepo: AppConfigRepository
   segmentRepo: SegmentRepository
   auditLogRepo: AuditLogRepository
   eventRepo: EventRepository
@@ -40,13 +45,16 @@ export interface Dependencies {
   deviceService: DeviceService
   automationService: AutomationService
   analyticsService: AnalyticsService
+  appConfigService: AppConfigService
   segmentService: SegmentService
   billingService: BillingService
+  buildService: BuildService
   pushService: PushService
   pushDispatchService: PushDispatchService
   encryptionService: EncryptionService
   auditLogService: AuditLogService
   eventIngestionService: EventIngestionService
+  idempotencyStore: IdempotencyStore
 }
 
 export interface FactoryConfig {
@@ -69,6 +77,7 @@ export function createDependencies(
   const deviceRepo = overrides?.deviceRepo ?? new DeviceRepository(config.db)
   const automationRepo = overrides?.automationRepo ?? new AutomationRepository(config.db)
   const analyticsRepo = overrides?.analyticsRepo ?? new AnalyticsRepository(config.db)
+  const appConfigRepo = overrides?.appConfigRepo ?? new AppConfigRepository(config.db)
   const segmentRepo = overrides?.segmentRepo ?? new SegmentRepository(config.db)
   const eventRepo = overrides?.eventRepo ?? new EventRepository(config.db)
   const pushProvider = overrides?.pushProvider ?? new OneSignalProvider(config.oneSignalApiKey)
@@ -82,6 +91,7 @@ export function createDependencies(
     overrides?.deviceService ?? new DeviceService({ deviceRepo, appUserRepo })
   const automationService = overrides?.automationService ?? new AutomationService(automationRepo)
   const analyticsService = overrides?.analyticsService ?? new AnalyticsService(analyticsRepo)
+  const appConfigService = overrides?.appConfigService ?? new AppConfigService(appConfigRepo)
   const segmentService = overrides?.segmentService ?? new SegmentService(segmentRepo)
   const pushService = overrides?.pushService ?? new PushService(pushProvider)
   const encryptionService =
@@ -109,6 +119,17 @@ export function createDependencies(
   const eventIngestionService =
     overrides?.eventIngestionService ??
     new EventIngestionService({ eventRepo })
+  const idempotencyStore = overrides?.idempotencyStore ?? new InMemoryIdempotencyStore()
+  const buildService =
+    overrides?.buildService ??
+    new BuildService({
+      appConfigLookup: appConfigRepo,
+      buildQueue: {
+        async addBuildJob() {
+          // BullMQ integration wired in apps/workers — this is a no-op default
+        },
+      },
+    })
 
   return {
     notificationRepo,
@@ -118,6 +139,7 @@ export function createDependencies(
     deviceRepo,
     automationRepo,
     analyticsRepo,
+    appConfigRepo,
     segmentRepo,
     auditLogRepo,
     eventRepo,
@@ -129,12 +151,15 @@ export function createDependencies(
     deviceService,
     automationService,
     analyticsService,
+    appConfigService,
     segmentService,
     billingService,
+    buildService,
     pushService,
     pushDispatchService,
     encryptionService,
     auditLogService,
     eventIngestionService,
+    idempotencyStore,
   }
 }

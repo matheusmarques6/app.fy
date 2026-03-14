@@ -1,6 +1,6 @@
 import { notificationDeliveries, notifications } from '@appfy/db'
 import type { FlowType } from '@appfy/shared'
-import { and, count, eq, gte, lte, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { BaseRepository } from '../repositories/base.repository.js'
 
 export interface AnalyticsOverview {
@@ -35,6 +35,19 @@ export interface FlowAnalytics {
 export interface AnalyticsPeriod {
   readonly from: Date
   readonly to: Date
+}
+
+export interface RevenueDataPoint {
+  readonly date: string
+  readonly converted: number
+}
+
+export interface TopNotification {
+  readonly notificationId: string
+  readonly title: string
+  readonly converted: number
+  readonly sent: number
+  readonly conversionRate: number
 }
 
 export class AnalyticsRepository extends BaseRepository {
@@ -156,5 +169,71 @@ export class AnalyticsRepository extends BaseRepository {
       totalConverted,
       conversionRate: totalSent > 0 ? totalConverted / totalSent : 0,
     }
+  }
+
+  async getRevenueChart(tenantId: string, period: AnalyticsPeriod): Promise<RevenueDataPoint[]> {
+    this.assertTenantId(tenantId)
+
+    const result = await this.db
+      .select({
+        date: sql<string>`date(${notificationDeliveries.convertedAt})`,
+        converted: count(),
+      })
+      .from(notificationDeliveries)
+      .where(
+        and(
+          eq(notificationDeliveries.tenantId, tenantId),
+          eq(notificationDeliveries.status, 'converted'),
+          gte(notificationDeliveries.convertedAt, period.from),
+          lte(notificationDeliveries.convertedAt, period.to),
+        ),
+      )
+      .groupBy(sql`date(${notificationDeliveries.convertedAt})`)
+      .orderBy(sql`date(${notificationDeliveries.convertedAt})`)
+
+    return result.map((row) => ({
+      date: String(row.date),
+      converted: Number(row.converted),
+    }))
+  }
+
+  async getTopNotifications(
+    tenantId: string,
+    period: AnalyticsPeriod,
+    limit = 5,
+  ): Promise<TopNotification[]> {
+    this.assertTenantId(tenantId)
+
+    const result = await this.db
+      .select({
+        notificationId: notificationDeliveries.notificationId,
+        title: notifications.title,
+        sent: sql<number>`count(*) filter (where ${notificationDeliveries.status} in ('sent','delivered','opened','clicked','converted'))`,
+        converted: sql<number>`count(*) filter (where ${notificationDeliveries.status} = 'converted')`,
+      })
+      .from(notificationDeliveries)
+      .innerJoin(notifications, eq(notificationDeliveries.notificationId, notifications.id))
+      .where(
+        and(
+          eq(notificationDeliveries.tenantId, tenantId),
+          gte(notificationDeliveries.createdAt, period.from),
+          lte(notificationDeliveries.createdAt, period.to),
+        ),
+      )
+      .groupBy(notificationDeliveries.notificationId, notifications.title)
+      .orderBy(desc(sql`count(*) filter (where ${notificationDeliveries.status} = 'converted')`))
+      .limit(limit)
+
+    return result.map((row) => {
+      const sent = Number(row.sent)
+      const converted = Number(row.converted)
+      return {
+        notificationId: row.notificationId,
+        title: row.title,
+        sent,
+        converted,
+        conversionRate: sent > 0 ? converted / sent : 0,
+      }
+    })
   }
 }

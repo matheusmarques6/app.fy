@@ -2,6 +2,10 @@
 export type { Dependencies, FactoryConfig } from './factory.js'
 export { createDependencies } from './factory.js'
 
+// App Configs
+export type { AppConfigRow, UpdateAppConfigInput } from './app-configs/index.js'
+export { AppConfigRepository, AppConfigService } from './app-configs/index.js'
+
 // Audit
 export type { AuditLogEntry, CreateAuditLogInput } from './audit/index.js'
 export { AuditLogRepository, AuditLogService } from './audit/index.js'
@@ -20,6 +24,8 @@ export type {
   AnalyticsPeriod,
   FlowAnalytics,
   NotificationAnalytics,
+  RevenueDataPoint,
+  TopNotification,
 } from './analytics/index.js'
 // Analytics
 export { AnalyticsRepository, AnalyticsService } from './analytics/index.js'
@@ -35,9 +41,9 @@ export { AppUserRepository, AppUserService, isValidEmail, validateAppUserInput }
 export type { AutomationConfigRow, AutomationJobPayload, QueueAdapter, UpdateAutomationInput } from './automations/index.js'
 // Automations
 export { AutomationRepository, AutomationService, AutomationTriggerService, DEFAULT_DELAYS } from './automations/index.js'
-export type { BillingServiceDeps, BillingWebhookEvent, CheckoutSession, PlanLimitCheckResult, PlanPriceRegistry, StripeCheckoutResult, StripeClient, StripeSubscription, Subscription } from './billing/index.js'
+export type { BillingServiceDeps, BillingWebhookEvent, CheckoutSession, IdempotencyStore, PlanLimitCheckResult, PlanPriceRegistry, StripeCheckoutResult, StripeClient, StripeSubscription, Subscription } from './billing/index.js'
 // Billing
-export { BillingService, checkPlanLimit, PlanLimitService, StripeProvider } from './billing/index.js'
+export { BillingService, checkPlanLimit, InMemoryIdempotencyStore, PlanLimitService, StripeProvider } from './billing/index.js'
 export { addSeconds, isExpired, now } from './common/date.js'
 // Common utilities
 export {
@@ -167,6 +173,7 @@ export type {
 } from './push/index.js'
 export type {
   AnalyticsQueuePayload,
+  BuildQueuePayload,
   DataIngestionPayload,
   PushDispatchPayload,
   QueueName,
@@ -175,10 +182,15 @@ export type {
 // Queues
 export {
   analyticsQueue,
+  buildQueue,
   dataIngestionQueue,
   pushDispatchQueue,
   queueNames,
 } from './queues/index.js'
+// Builds
+export type { AppConfigLookup, BuildQueueAdapter, BuildServiceDeps, BuildStatus } from './builds/index.js'
+export { BuildError, BuildService } from './builds/index.js'
+
 // Base Repository
 export { BaseRepository } from './repositories/base.repository.js'
 export type {
