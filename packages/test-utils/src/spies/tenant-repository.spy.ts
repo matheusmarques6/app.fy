@@ -11,6 +11,11 @@ export class TenantRepositorySpy extends SpyBase {
     return this.result
   }
 
+  async findByPlatformUrl(platformStoreUrl: string): Promise<TenantRow | undefined> {
+    this.trackCall('findByPlatformUrl', [platformStoreUrl])
+    return this.result
+  }
+
   async findBySlug(tenantId: string, slug: string): Promise<TenantRow | undefined> {
     this.trackCall('findBySlug', [tenantId, slug])
     return this.result

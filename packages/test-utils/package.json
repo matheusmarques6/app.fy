@@ -21,6 +21,7 @@
     "@appfy/core": "workspace:*",
     "@appfy/db": "workspace:*",
     "@appfy/shared": "workspace:*",
+    "drizzle-orm": "^0.44.2",
     "jose": "^6.0.11"
   },
   "devDependencies": {

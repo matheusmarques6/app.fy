@@ -48,6 +48,9 @@ importers:
         specifier: ^3.25.67
         version: 3.25.76
     devDependencies:
+      '@appfy/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
       '@types/node':
         specifier: ^22.16.4
         version: 22.19.15
@@ -320,6 +323,9 @@ importers:
       '@appfy/shared':
         specifier: workspace:*
         version: link:../shared
+      drizzle-orm:
+        specifier: ^0.44.2
+        version: 0.44.7(postgres@3.4.8)
       jose:
         specifier: ^6.0.11
         version: 6.2.1

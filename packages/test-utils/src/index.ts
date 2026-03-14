@@ -1,7 +1,8 @@
 // Builders
 
-export type { AppEventRow, DeliveryRow, MembershipRow, UserRow } from './builders/index.js'
+export type { AppConfigRow, AppEventRow, DeliveryRow, MembershipRow, UserRow } from './builders/index.js'
 export {
+  AppConfigBuilder,
   AppEventBuilder,
   AppUserBuilder,
   AutomationConfigBuilder,
@@ -9,6 +10,7 @@ export {
   DeviceBuilder,
   MembershipBuilder,
   NotificationBuilder,
+  SegmentBuilder,
   TenantBuilder,
   UserBuilder,
 } from './builders/index.js'

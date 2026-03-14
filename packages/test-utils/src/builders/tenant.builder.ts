@@ -6,6 +6,8 @@ export class TenantBuilder {
     name: 'Test Tenant',
     slug: `tenant-${crypto.randomUUID().slice(0, 8)}`,
     platform: 'shopify',
+    platformStoreUrl: null,
+    platformCredentials: null,
     isActive: true,
     onesignalAppId: null,
     notificationCountCurrentPeriod: 0,
@@ -43,6 +45,16 @@ export class TenantBuilder {
 
   nuvemshop(): this {
     return this.withPlatform('nuvemshop')
+  }
+
+  withPlatformStoreUrl(url: string): this {
+    this.data = { ...this.data, platformStoreUrl: url }
+    return this
+  }
+
+  withPlatformCredentials(credentials: unknown): this {
+    this.data = { ...this.data, platformCredentials: credentials }
+    return this
   }
 
   inactive(): this {
