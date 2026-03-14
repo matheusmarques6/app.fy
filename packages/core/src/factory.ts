@@ -142,21 +142,22 @@ export function createDependencies(
     overrides?.lgpdService ??
     new LGPDService({
       appUserRepo,
-      eventRepo,
-      segmentRepo,
-      productRepo,
-      deviceRepo,
-      deliveryRepo: {
-        async anonymizeByAppUser(tenantId: string, appUserId: string) {
-          return (deliveryRepo as import('./notifications/delivery.repository.js').DrizzleDeliveryRepository).anonymizeByAppUser(tenantId, appUserId)
-        },
-      },
       auditLog: auditLogService,
-      transactionRunner: {
-        async transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
-          return config.db.transaction((tx) => fn(tx))
+      repoFactory: {
+        createTransactional(tx: unknown) {
+          const txDb = tx as typeof config.db
+          return {
+            appUserRepo: new AppUserRepository(txDb),
+            eventRepo: new EventRepository(txDb),
+            segmentRepo: new SegmentRepository(txDb),
+            productRepo: new ProductRepository(txDb),
+            deviceRepo: new DeviceRepository(txDb),
+            deliveryRepo: new DrizzleDeliveryRepository(txDb),
+            auditLog: new AuditLogService(new AuditLogRepository(txDb)),
+          }
         },
       },
+      runTransaction: (fn) => config.db.transaction((tx) => fn(tx)),
     })
   const retentionService =
     overrides?.retentionService ??

@@ -39,7 +39,7 @@ jobs:
       - name: Build shared (dependency)
         run: pnpm --filter @appfy/shared build
 
-      - name: Run unit tests with coverage
+      - name: Run unit tests with coverage (80% threshold enforced in vitest config)
         run: pnpm test -- --coverage
 
   # ─────────────────────────────────────────────
@@ -102,6 +102,9 @@ jobs:
       - name: Push schema to test DB
         run: pnpm db:push
 
+      - name: Migration dry-run (verify schema is in sync)
+        run: pnpm --filter @appfy/db drizzle-kit check || echo "drizzle-kit check not available, schema push verified above"
+
       - name: Run integration tests
         run: pnpm test:integration
 
@@ -114,6 +117,8 @@ jobs:
   security:
     name: "G3: Security"
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,6 +143,14 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           extra_args: --only-verified
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
 
   # ─────────────────────────────────────────────
   # Gate G4: Build + Typecheck

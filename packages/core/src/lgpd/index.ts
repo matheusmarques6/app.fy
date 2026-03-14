@@ -5,8 +5,9 @@ export type {
   LGPDEventRepository,
   LGPDProductRepository,
   LGPDSegmentRepository,
+  LGPDRepoFactory,
+  LGPDRepos,
   LGPDServiceDeps,
-  TransactionRunner,
   UserDataDeletionResult,
 } from './lgpd.service.js'
 export { LGPDService } from './lgpd.service.js'

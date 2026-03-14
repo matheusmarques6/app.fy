@@ -134,16 +134,21 @@ jobs:
 
           echo "All smoke tests passed"
 
-      # Auto-rollback on failure
+      # Auto-rollback on failure: redeploy previous commit
       - name: Rollback on Failure
         if: failure()
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          echo "Smoke tests failed — triggering rollback"
-          # Railway supports rollback to previous deployment
-          # railway rollback --service api --environment staging
-          echo "TODO: Implement Railway rollback command once service IDs are configured"
+          echo "Smoke tests failed — rolling back staging to previous commit"
+          npm install -g @railway/cli
+          PREV_SHA=$(git rev-parse HEAD~1)
+          git checkout "$PREV_SHA"
+          railway up --service api --environment staging
+          railway up --service workers-push --environment staging
+          railway up --service workers-ingestion --environment staging
+          railway up --service workers-analytics --environment staging
+          echo "Rollback deployed from $PREV_SHA"
 
   # ─────────────────────────────────────────────
   # Gate G7: Manual Approval → Production Deploy

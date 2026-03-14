@@ -33,12 +33,8 @@ export interface LGPDDeliveryRepository {
   anonymizeByAppUser(tenantId: string, appUserId: string): Promise<number>
 }
 
-/** Transaction runner interface */
-export interface TransactionRunner {
-  transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>
-}
-
-export interface LGPDServiceDeps {
+/** All LGPD repos grouped — used to create transaction-scoped instances */
+export interface LGPDRepos {
   appUserRepo: LGPDAppUserRepository
   eventRepo: LGPDEventRepository
   segmentRepo: LGPDSegmentRepository
@@ -46,7 +42,21 @@ export interface LGPDServiceDeps {
   deviceRepo: LGPDDeviceRepository
   deliveryRepo: LGPDDeliveryRepository
   auditLog: AuditLogger
-  transactionRunner: TransactionRunner
+}
+
+/**
+ * Factory that creates a set of repos bound to a Drizzle transaction.
+ * In production, this creates new repo instances with `tx` instead of `db`.
+ */
+export interface LGPDRepoFactory {
+  createTransactional(tx: unknown): LGPDRepos
+}
+
+export interface LGPDServiceDeps {
+  appUserRepo: LGPDAppUserRepository
+  auditLog: AuditLogger
+  repoFactory: LGPDRepoFactory
+  runTransaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>
 }
 
 export interface UserDataDeletionResult {
@@ -67,23 +77,15 @@ export interface UserDataDeletionResult {
  */
 export class LGPDService {
   private readonly appUserRepo: LGPDAppUserRepository
-  private readonly eventRepo: LGPDEventRepository
-  private readonly segmentRepo: LGPDSegmentRepository
-  private readonly productRepo: LGPDProductRepository
-  private readonly deviceRepo: LGPDDeviceRepository
-  private readonly deliveryRepo: LGPDDeliveryRepository
   private readonly auditLog: AuditLogger
-  private readonly transactionRunner: TransactionRunner
+  private readonly repoFactory: LGPDRepoFactory
+  private readonly runTransaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>
 
   constructor(deps: LGPDServiceDeps) {
     this.appUserRepo = deps.appUserRepo
-    this.eventRepo = deps.eventRepo
-    this.segmentRepo = deps.segmentRepo
-    this.productRepo = deps.productRepo
-    this.deviceRepo = deps.deviceRepo
-    this.deliveryRepo = deps.deliveryRepo
     this.auditLog = deps.auditLog
-    this.transactionRunner = deps.transactionRunner
+    this.repoFactory = deps.repoFactory
+    this.runTransaction = deps.runTransaction
   }
 
   /**
@@ -107,7 +109,7 @@ export class LGPDService {
   /**
    * Deletes all user data (LGPD right to be forgotten).
    *
-   * Executed in a single transaction:
+   * Executed in a single transaction — all repos are bound to the same `tx`:
    * 1. Delete app_events
    * 2. Remove from all segments
    * 3. Delete app_user_products
@@ -124,27 +126,30 @@ export class LGPDService {
       throw new AppUserNotFoundError(appUserId)
     }
 
-    return this.transactionRunner.transaction(async () => {
+    return this.runTransaction(async (tx) => {
+      // Create repos bound to this transaction
+      const repos = this.repoFactory.createTransactional(tx)
+
       // 1. Delete events
-      const eventsDeleted = await this.eventRepo.deleteByAppUser(tenantId, appUserId)
+      const eventsDeleted = await repos.eventRepo.deleteByAppUser(tenantId, appUserId)
 
       // 2. Remove from segments
-      const segmentsRemoved = await this.segmentRepo.removeMemberFromAll(tenantId, appUserId)
+      const segmentsRemoved = await repos.segmentRepo.removeMemberFromAll(tenantId, appUserId)
 
       // 3. Delete products
-      const productsDeleted = await this.productRepo.deleteByAppUser(tenantId, appUserId)
+      const productsDeleted = await repos.productRepo.deleteByAppUser(tenantId, appUserId)
 
       // 4. Delete devices
-      const devicesDeleted = await this.deviceRepo.deleteByAppUser(tenantId, appUserId)
+      const devicesDeleted = await repos.deviceRepo.deleteByAppUser(tenantId, appUserId)
 
       // 5. Anonymize deliveries (NOT delete — preserves metrics)
-      const deliveriesAnonymized = await this.deliveryRepo.anonymizeByAppUser(tenantId, appUserId)
+      const deliveriesAnonymized = await repos.deliveryRepo.anonymizeByAppUser(tenantId, appUserId)
 
       // 6. Delete app_user
-      await this.appUserRepo.delete(tenantId, appUserId)
+      await repos.appUserRepo.delete(tenantId, appUserId)
 
-      // 7. Audit log
-      await this.auditLog.log(tenantId, 'lgpd.user_data_deleted', 'app_user', appUserId, {
+      // 7. Audit log (within same transaction)
+      await repos.auditLog.log(tenantId, 'lgpd.user_data_deleted', 'app_user', appUserId, {
         deliveriesAnonymized: true,
         anonymizedDeliveryCount: deliveriesAnonymized,
         eventsDeleted,

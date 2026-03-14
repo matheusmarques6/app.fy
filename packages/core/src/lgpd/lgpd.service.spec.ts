@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LGPDService } from './lgpd.service.js'
+import { LGPDService, type LGPDRepos, type LGPDRepoFactory } from './lgpd.service.js'
 import { AppUserNotFoundError } from '../errors.js'
 
 // --- Inline spy doubles (core tests don't import from test-utils) ---
@@ -87,46 +87,64 @@ class AuditLogSpy extends CallTracker {
   }
 }
 
-class TransactionSpy extends CallTracker {
-  async transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
-    this.track('transaction', [])
-    return fn(undefined)
-  }
-}
-
 // --- Test suite ---
 
 function makeSut() {
   const appUserRepo = new AppUserRepoSpy()
-  const eventRepo = new EventRepoSpy()
-  const segmentRepo = new SegmentRepoSpy()
-  const productRepo = new ProductRepoSpy()
-  const deviceRepo = new DeviceRepoSpy()
-  const deliveryRepo = new DeliveryRepoSpy()
   const auditLog = new AuditLogSpy()
-  const transactionRunner = new TransactionSpy()
+
+  // Transaction-scoped repos (separate instances to verify tx is used)
+  const txEventRepo = new EventRepoSpy()
+  const txSegmentRepo = new SegmentRepoSpy()
+  const txProductRepo = new ProductRepoSpy()
+  const txDeviceRepo = new DeviceRepoSpy()
+  const txDeliveryRepo = new DeliveryRepoSpy()
+  const txAppUserRepo = new AppUserRepoSpy()
+  txAppUserRepo.result = { id: 'user-1', tenantId: 't-1' }
+  const txAuditLog = new AuditLogSpy()
+
+  let receivedTx: unknown = null
+
+  const repoFactory: LGPDRepoFactory = {
+    createTransactional(tx: unknown): LGPDRepos {
+      receivedTx = tx
+      return {
+        appUserRepo: txAppUserRepo,
+        eventRepo: txEventRepo,
+        segmentRepo: txSegmentRepo,
+        productRepo: txProductRepo,
+        deviceRepo: txDeviceRepo,
+        deliveryRepo: txDeliveryRepo,
+        auditLog: txAuditLog,
+      }
+    },
+  }
+
+  const txSentinel = Symbol('drizzle-tx')
+  const runTransaction = async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+    return fn(txSentinel)
+  }
 
   const sut = new LGPDService({
     appUserRepo,
-    eventRepo,
-    segmentRepo,
-    productRepo,
-    deviceRepo,
-    deliveryRepo,
     auditLog,
-    transactionRunner,
+    repoFactory,
+    runTransaction,
   })
 
   return {
     sut,
     appUserRepo,
-    eventRepo,
-    segmentRepo,
-    productRepo,
-    deviceRepo,
-    deliveryRepo,
     auditLog,
-    transactionRunner,
+    txEventRepo,
+    txSegmentRepo,
+    txProductRepo,
+    txDeviceRepo,
+    txDeliveryRepo,
+    txAppUserRepo,
+    txAuditLog,
+    txSentinel,
+    getReceivedTx: () => receivedTx,
   }
 }
 
@@ -175,38 +193,46 @@ describe('LGPDService', () => {
   })
 
   describe('deleteUserData', () => {
-    it('should delete all user data in transaction and log audit', async () => {
-      const { sut, eventRepo, segmentRepo, productRepo, deviceRepo, deliveryRepo, appUserRepo, auditLog, transactionRunner } = makeSut()
+    it('should pass tx to repo factory and use transaction-scoped repos', async () => {
+      const { sut, getReceivedTx, txSentinel, txEventRepo } = makeSut()
 
       await sut.deleteUserData('t-1', 'user-1')
 
-      // Transaction was used
-      expect(transactionRunner.wasCalled('transaction')).toBe(true)
+      // Verify tx was passed to the repo factory
+      expect(getReceivedTx()).toBe(txSentinel)
+      // Verify transaction-scoped repos were called (not the outer ones)
+      expect(txEventRepo.wasCalled('deleteByAppUser')).toBe(true)
+    })
 
-      // All repos called
-      expect(eventRepo.wasCalled('deleteByAppUser')).toBe(true)
-      expect(eventRepo.lastCallArgs('deleteByAppUser')).toEqual(['t-1', 'user-1'])
+    it('should delete all user data in transaction and log audit', async () => {
+      const { sut, txEventRepo, txSegmentRepo, txProductRepo, txDeviceRepo, txDeliveryRepo, txAppUserRepo, txAuditLog } = makeSut()
 
-      expect(segmentRepo.wasCalled('removeMemberFromAll')).toBe(true)
-      expect(segmentRepo.lastCallArgs('removeMemberFromAll')).toEqual(['t-1', 'user-1'])
+      await sut.deleteUserData('t-1', 'user-1')
 
-      expect(productRepo.wasCalled('deleteByAppUser')).toBe(true)
-      expect(productRepo.lastCallArgs('deleteByAppUser')).toEqual(['t-1', 'user-1'])
+      // All tx-scoped repos called
+      expect(txEventRepo.wasCalled('deleteByAppUser')).toBe(true)
+      expect(txEventRepo.lastCallArgs('deleteByAppUser')).toEqual(['t-1', 'user-1'])
 
-      expect(deviceRepo.wasCalled('deleteByAppUser')).toBe(true)
-      expect(deviceRepo.lastCallArgs('deleteByAppUser')).toEqual(['t-1', 'user-1'])
+      expect(txSegmentRepo.wasCalled('removeMemberFromAll')).toBe(true)
+      expect(txSegmentRepo.lastCallArgs('removeMemberFromAll')).toEqual(['t-1', 'user-1'])
+
+      expect(txProductRepo.wasCalled('deleteByAppUser')).toBe(true)
+      expect(txProductRepo.lastCallArgs('deleteByAppUser')).toEqual(['t-1', 'user-1'])
+
+      expect(txDeviceRepo.wasCalled('deleteByAppUser')).toBe(true)
+      expect(txDeviceRepo.lastCallArgs('deleteByAppUser')).toEqual(['t-1', 'user-1'])
 
       // Deliveries are ANONYMIZED (not deleted)
-      expect(deliveryRepo.wasCalled('anonymizeByAppUser')).toBe(true)
-      expect(deliveryRepo.lastCallArgs('anonymizeByAppUser')).toEqual(['t-1', 'user-1'])
+      expect(txDeliveryRepo.wasCalled('anonymizeByAppUser')).toBe(true)
+      expect(txDeliveryRepo.lastCallArgs('anonymizeByAppUser')).toEqual(['t-1', 'user-1'])
 
       // App user deleted last
-      expect(appUserRepo.wasCalled('delete')).toBe(true)
-      expect(appUserRepo.lastCallArgs('delete')).toEqual(['t-1', 'user-1'])
+      expect(txAppUserRepo.wasCalled('delete')).toBe(true)
+      expect(txAppUserRepo.lastCallArgs('delete')).toEqual(['t-1', 'user-1'])
 
-      // Audit logged with deliveriesAnonymized flag
-      expect(auditLog.wasCalled('log')).toBe(true)
-      const [tenantId, action, entityType, entityId, metadata] = auditLog.lastCallArgs('log') as [string, string, string, string, Record<string, unknown>]
+      // Audit logged with deliveriesAnonymized flag (within transaction)
+      expect(txAuditLog.wasCalled('log')).toBe(true)
+      const [tenantId, action, entityType, entityId, metadata] = txAuditLog.lastCallArgs('log') as [string, string, string, string, Record<string, unknown>]
       expect(tenantId).toBe('t-1')
       expect(action).toBe('lgpd.user_data_deleted')
       expect(entityType).toBe('app_user')

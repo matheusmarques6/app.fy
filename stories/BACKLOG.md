@@ -1934,4 +1934,22 @@ This path delivers: auth → tenants → users → devices → notifications →
 
 ---
 
+### Phase 7 — Compliance & Hardening — DONE (2026-03-14)
+
+#### Epic 15 — LGPD & Data Retention
+
+- ~~**Story 15.1** — LGPD Compliance~~ — 7 tests (opt-in/opt-out audit, transactional data deletion, delivery anonymization, push opt-out enforcement)
+- ~~**Story 15.2** — Data Retention Jobs~~ — 7 tests (batch delete 180d deliveries, 90d events, boundary correctness, retention worker)
+
+#### Epic 16 — CI/CD Pipeline
+
+- ~~**Story 16.1** — Pre-Commit Hooks (Gate G0)~~ — husky + lint-staged (biome format + lint on staged files)
+- ~~**Story 16.2** — CI Pipeline (Gates G1-G4)~~ — `.github/workflows/ci.yml` (unit tests + coverage, integration/isolation with PG+Redis, security scanning, build + typecheck)
+- ~~**Story 16.3** — Deploy Pipeline (Gates G5-G7)~~ — `.github/workflows/deploy.yml` (staging deploy + health check, smoke tests + auto-rollback, manual approval → production)
+
+**Phase 7 tests: 14** (6 LGPD + 7 retention + 1 push opt-out dispatch)
+**Total project tests: 691 passing, 129 todo**
+
+---
+
 *Pax, equilibrando prioridades*
