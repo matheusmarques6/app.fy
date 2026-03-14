@@ -167,14 +167,8 @@ export function createIntegrationHandlers(deps: Dependencies) {
         queue: QUEUE_NAMES.dataIngestion,
       }
 
-      // Return acknowledgement with payload info
       // Actual BullMQ enqueue will happen when workers integration is connected
-      return c.json({
-        received: true,
-        topic: headers.topic,
-        flowType: flowType ?? null,
-        jobPayload,
-      })
+      return c.json({ received: true })
     },
   }
 }

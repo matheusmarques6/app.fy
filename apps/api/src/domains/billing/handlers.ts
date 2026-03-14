@@ -2,6 +2,26 @@ import type { Dependencies } from '@appfy/core'
 import type { Context } from 'hono'
 import type { CheckoutBody, PortalBody } from './schemas.js'
 
+/** Structured logger for webhook events — avoids console.warn in prod */
+function logWebhookWarning(eventType: string, eventId: string, message: string): void {
+  process.stderr.write(
+    `${JSON.stringify({ level: 'warn', message, eventType, eventId })}\n`,
+  )
+}
+
+/** Extracts tenantId from Stripe event metadata */
+function extractTenantId(event: { type: string; id: string; data: { object: unknown } }): {
+  tenantId: string | undefined
+  obj: Record<string, unknown>
+} {
+  const obj = event.data.object as Record<string, unknown>
+  const tenantId = (obj.metadata as Record<string, string> | undefined)?.tenantId
+  if (!tenantId) {
+    logWebhookWarning(event.type, event.id, 'Stripe webhook missing tenantId in metadata')
+  }
+  return { tenantId, obj }
+}
+
 export function createBillingHandlers(deps: Dependencies) {
   return {
     /** POST /billing/checkout — Create Stripe checkout session (owner only) */
@@ -70,17 +90,8 @@ export function createBillingHandlers(deps: Dependencies) {
 
         switch (event.type) {
           case 'checkout.session.completed': {
-            const obj = event.data.object as Record<string, unknown>
-            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (!tenantId) {
-              console.warn(JSON.stringify({
-                level: 'warn',
-                message: 'Stripe webhook missing tenantId in metadata',
-                eventType: event.type,
-                eventId: event.id,
-              }))
-              break
-            }
+            const { tenantId, obj } = extractTenantId(event)
+            if (!tenantId) break
             await deps.billingService.handleCheckoutCompleted(
               tenantId,
               obj.customer as string,
@@ -90,47 +101,20 @@ export function createBillingHandlers(deps: Dependencies) {
             break
           }
           case 'invoice.payment_succeeded': {
-            const obj = event.data.object as Record<string, unknown>
-            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (!tenantId) {
-              console.warn(JSON.stringify({
-                level: 'warn',
-                message: 'Stripe webhook missing tenantId in metadata',
-                eventType: event.type,
-                eventId: event.id,
-              }))
-              break
-            }
+            const { tenantId } = extractTenantId(event)
+            if (!tenantId) break
             await deps.billingService.handlePaymentSucceeded(tenantId)
             break
           }
           case 'invoice.payment_failed': {
-            const obj = event.data.object as Record<string, unknown>
-            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (!tenantId) {
-              console.warn(JSON.stringify({
-                level: 'warn',
-                message: 'Stripe webhook missing tenantId in metadata',
-                eventType: event.type,
-                eventId: event.id,
-              }))
-              break
-            }
+            const { tenantId } = extractTenantId(event)
+            if (!tenantId) break
             await deps.billingService.handlePaymentFailed(tenantId)
             break
           }
           case 'customer.subscription.deleted': {
-            const obj = event.data.object as Record<string, unknown>
-            const tenantId = (obj.metadata as Record<string, string>)?.tenantId
-            if (!tenantId) {
-              console.warn(JSON.stringify({
-                level: 'warn',
-                message: 'Stripe webhook missing tenantId in metadata',
-                eventType: event.type,
-                eventId: event.id,
-              }))
-              break
-            }
+            const { tenantId } = extractTenantId(event)
+            if (!tenantId) break
             await deps.billingService.handleSubscriptionDeleted(tenantId)
             break
           }

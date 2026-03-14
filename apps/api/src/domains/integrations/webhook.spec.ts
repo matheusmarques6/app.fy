@@ -270,18 +270,8 @@ describe('Webhook Handler (Layer 4 — HTTP)', () => {
       })
 
       expect(res.status).toBe(200)
-      const body = await res.json() as {
-        received: boolean
-        topic: string
-        flowType: string | null
-        jobPayload: { tenantId: string; platform: string; queue: string }
-      }
+      const body = await res.json() as { received: boolean }
       expect(body.received).toBe(true)
-      expect(body.topic).toBe('orders/paid')
-      expect(body.flowType).toBe('order_confirmed')
-      expect(body.jobPayload.tenantId).toBe(tenantRepoSpy.result!.id)
-      expect(body.jobPayload.platform).toBe('shopify')
-      expect(body.jobPayload.queue).toBe('data-ingestion')
     })
 
     it('should return 200 with flow type cart_abandoned for carts/create', async () => {
@@ -302,11 +292,11 @@ describe('Webhook Handler (Layer 4 — HTTP)', () => {
       })
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { flowType: string | null }
-      expect(body.flowType).toBe('cart_abandoned')
+      const body = await res.json() as { received: boolean }
+      expect(body.received).toBe(true)
     })
 
-    it('should return null flowType for unmapped topics', async () => {
+    it('should return 200 for unmapped topics', async () => {
       const { app, tenantRepoSpy, encryptionService } = await makeSut()
       tenantRepoSpy.result = await buildTenantWithShopifyCredentials(encryptionService)
 
@@ -324,8 +314,8 @@ describe('Webhook Handler (Layer 4 — HTTP)', () => {
       })
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { flowType: string | null }
-      expect(body.flowType).toBeNull()
+      const body = await res.json() as { received: boolean }
+      expect(body.received).toBe(true)
     })
   })
 
@@ -348,16 +338,8 @@ describe('Webhook Handler (Layer 4 — HTTP)', () => {
       })
 
       expect(res.status).toBe(200)
-      const body = await res.json() as {
-        received: boolean
-        topic: string
-        flowType: string | null
-        jobPayload: { tenantId: string; platform: string }
-      }
+      const body = await res.json() as { received: boolean }
       expect(body.received).toBe(true)
-      expect(body.topic).toBe('orders/created')
-      expect(body.flowType).toBe('order_confirmed')
-      expect(body.jobPayload.platform).toBe('nuvemshop')
     })
 
     it('should return checkout_abandoned flow for checkouts/created', async () => {
@@ -378,13 +360,13 @@ describe('Webhook Handler (Layer 4 — HTTP)', () => {
       })
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { flowType: string | null }
-      expect(body.flowType).toBe('checkout_abandoned')
+      const body = await res.json() as { received: boolean }
+      expect(body.received).toBe(true)
     })
   })
 
-  describe('job payload structure', () => {
-    it('should include all required fields in jobPayload', async () => {
+  describe('response shape', () => {
+    it('should return only { received: true } without internal details', async () => {
       const { app, tenantRepoSpy, encryptionService } = await makeSut()
       const tenant = await buildTenantWithShopifyCredentials(encryptionService)
       tenantRepoSpy.result = tenant
@@ -403,27 +385,13 @@ describe('Webhook Handler (Layer 4 — HTTP)', () => {
       })
 
       expect(res.status).toBe(200)
-      const body = await res.json() as {
-        jobPayload: {
-          tenantId: string
-          platform: string
-          topic: string
-          flowType: string | null
-          shopDomain: string
-          data: unknown
-          receivedAt: string
-          queue: string
-        }
-      }
+      const body = await res.json() as Record<string, unknown>
 
-      expect(body.jobPayload.tenantId).toBe(tenant.id)
-      expect(body.jobPayload.platform).toBe('shopify')
-      expect(body.jobPayload.topic).toBe('fulfillments/create')
-      expect(body.jobPayload.flowType).toBe('tracking_created')
-      expect(body.jobPayload.shopDomain).toBe('test-store.myshopify.com')
-      expect(body.jobPayload.data).toEqual({ id: 123 })
-      expect(body.jobPayload.receivedAt).toBeDefined()
-      expect(body.jobPayload.queue).toBe('data-ingestion')
+      expect(body.received).toBe(true)
+      // Must NOT leak internal data
+      expect(body.jobPayload).toBeUndefined()
+      expect(body.tenantId).toBeUndefined()
+      expect(body.data).toBeUndefined()
     })
   })
 
