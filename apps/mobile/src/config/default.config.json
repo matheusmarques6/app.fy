@@ -1,0 +1,19 @@
+{
+  "tenantId": "PLACEHOLDER_TENANT_ID",
+  "appName": "AppFy",
+  "storeUrl": "https://example.myshopify.com",
+  "onesignalAppId": "PLACEHOLDER_ONESIGNAL_APP_ID",
+  "apiBaseUrl": "https://api.appfy.com.br/v1",
+  "theme": {
+    "primaryColor": "#A855F7",
+    "backgroundColor": "#050505",
+    "accentColor": "#D946EF"
+  },
+  "logoUrl": "",
+  "splashUrl": "",
+  "features": {
+    "biometrics": false,
+    "haptics": true,
+    "offlineMode": false
+  }
+}
