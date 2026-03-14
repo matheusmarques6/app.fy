@@ -2,6 +2,7 @@ export { DrizzleDeliveryRepository } from '../notifications/delivery.repository.
 export { OneSignalProvider } from './onesignal.provider.js'
 export { PushDispatchService } from './push-dispatch.service.js'
 export type {
+  AppUserOptInLookup,
   CreateDeliveryInput,
   DeliveryRepository,
   DeliveryRow,

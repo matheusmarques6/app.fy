@@ -7,6 +7,7 @@
     "pnpm": ">=9"
   },
   "scripts": {
+    "prepare": "husky",
     "dev": "turbo dev",
     "build": "turbo build",
     "test": "turbo test",
@@ -20,9 +21,20 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.0",
     "turbo": "^2.8.16",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "biome format --write",
+      "biome lint --write"
+    ],
+    "*.{json,css}": [
+      "biome format --write"
+    ]
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

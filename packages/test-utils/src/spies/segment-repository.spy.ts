@@ -93,6 +93,11 @@ export class SegmentRepositorySpy extends SpyBase {
     return 0
   }
 
+  async removeMemberFromAll(tenantId: string, appUserId: string): Promise<number> {
+    this.trackCall('removeMemberFromAll', [tenantId, appUserId])
+    return 0
+  }
+
   async replaceMembers(
     tenantId: string,
     segmentId: string,

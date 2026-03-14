@@ -31,4 +31,14 @@ export class AppEventRepositorySpy extends SpyBase {
     this.trackCall('listByUser', [tenantId, appUserId])
     return this.listResult.filter((e) => e.appUserId === appUserId)
   }
+
+  async deleteByAppUser(tenantId: string, appUserId: string): Promise<number> {
+    this.trackCall('deleteByAppUser', [tenantId, appUserId])
+    return this.listResult.filter((e) => e.appUserId === appUserId).length
+  }
+
+  async deleteExpiredBefore(date: Date, batchSize: number): Promise<number> {
+    this.trackCall('deleteExpiredBefore', [date, batchSize])
+    return 0
+  }
 }

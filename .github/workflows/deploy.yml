@@ -1,0 +1,194 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Wait for CI to pass before deploying
+  # ─────────────────────────────────────────────
+  ci-check:
+    name: "Wait for CI"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify CI passed
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "G1: Unit Tests + Coverage"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+      - name: Verify Integration Tests passed
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "G2: Integration + Isolation Tests"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+      - name: Verify Build passed
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "G4: Build + Typecheck"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+  # ─────────────────────────────────────────────
+  # Gate G5: Deploy to Staging + Health Check
+  # ─────────────────────────────────────────────
+  deploy-staging:
+    name: "G5: Deploy Staging"
+    runs-on: ubuntu-latest
+    needs: [ci-check]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deploy API to Railway (staging)
+      - name: Deploy API to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm install -g @railway/cli
+          railway up --service api --environment staging
+
+      # Deploy Console to Vercel (staging/preview)
+      - name: Deploy Console to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install -g vercel
+          vercel deploy --token=$VERCEL_TOKEN
+
+      # Deploy Workers to Railway (staging)
+      - name: Deploy Workers to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service workers-push --environment staging
+          railway up --service workers-ingestion --environment staging
+          railway up --service workers-analytics --environment staging
+
+      # Health check — wait for services to be ready
+      - name: Health Check API
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "${{ vars.STAGING_API_URL }}/health" > /dev/null 2>&1; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Waiting for API... attempt $i/30"
+            sleep 10
+          done
+          echo "API health check failed after 5 minutes"
+          exit 1
+
+  # ─────────────────────────────────────────────
+  # Gate G6: Smoke Tests on Staging
+  # ─────────────────────────────────────────────
+  smoke-tests:
+    name: "G6: Smoke Tests"
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Smoke test: verify critical endpoints respond
+      - name: Smoke Tests
+        env:
+          STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+        run: |
+          echo "Running smoke tests against staging..."
+
+          # Health endpoint
+          curl -sf "$STAGING_API_URL/health" || { echo "FAIL: /health"; exit 1; }
+          echo "PASS: /health"
+
+          # API responds with 401 for unauthenticated requests (not 500)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_API_URL/api/notifications")
+          if [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
+            echo "PASS: /api/notifications returns auth error (expected)"
+          else
+            echo "FAIL: /api/notifications returned $STATUS (expected 401/403)"
+            exit 1
+          fi
+
+          echo "All smoke tests passed"
+
+      # Auto-rollback on failure
+      - name: Rollback on Failure
+        if: failure()
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Smoke tests failed — triggering rollback"
+          # Railway supports rollback to previous deployment
+          # railway rollback --service api --environment staging
+          echo "TODO: Implement Railway rollback command once service IDs are configured"
+
+  # ─────────────────────────────────────────────
+  # Gate G7: Manual Approval → Production Deploy
+  # ─────────────────────────────────────────────
+  deploy-production:
+    name: "G7: Deploy Production"
+    runs-on: ubuntu-latest
+    needs: [smoke-tests]
+    environment: production  # Requires manual approval configured in GitHub repo settings
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy API to Railway (Production)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PROD }}
+        run: |
+          npm install -g @railway/cli
+          railway up --service api --environment production
+
+      - name: Deploy Workers to Railway (Production)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PROD }}
+        run: |
+          railway up --service workers-push --environment production
+          railway up --service workers-ingestion --environment production
+          railway up --service workers-analytics --environment production
+
+      - name: Deploy Console to Vercel (Production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install -g vercel
+          vercel deploy --prod --token=$VERCEL_TOKEN
+
+      - name: Production Health Check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "${{ vars.PRODUCTION_API_URL }}/health" > /dev/null 2>&1; then
+              echo "Production API is healthy"
+              exit 0
+            fi
+            echo "Waiting for Production API... attempt $i/30"
+            sleep 10
+          done
+          echo "Production health check failed after 5 minutes"
+          exit 1

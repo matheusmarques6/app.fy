@@ -5,7 +5,7 @@ import { requireRoles } from '../../middleware/roles.js'
 import { createTenantMiddleware } from '../../middleware/tenant.js'
 import { validate } from '../../middleware/validate.js'
 import { createAppUserHandlers } from './handlers.js'
-import { createAppUserSchema, updateAppUserSchema } from './schemas.js'
+import { createAppUserSchema, updateAppUserSchema, updatePushOptInSchema } from './schemas.js'
 
 export function createAppUserRoutes(deps: Dependencies) {
   const app = new Hono()
@@ -26,6 +26,12 @@ export function createAppUserRoutes(deps: Dependencies) {
 
   // PUT — update (editor+)
   app.put('/:id', requireRoles('owner', 'editor'), validate(updateAppUserSchema), handlers.update)
+
+  // PATCH — push opt-in/opt-out (editor+, LGPD)
+  app.patch('/:id/push-opt-in', requireRoles('owner', 'editor'), validate(updatePushOptInSchema), handlers.updatePushOptIn)
+
+  // DELETE — user data deletion (owner only, LGPD right to be forgotten)
+  app.delete('/:id/data', requireRoles('owner'), handlers.deleteUserData)
 
   return app
 }

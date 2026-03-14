@@ -163,6 +163,7 @@ export type {
 // Push
 export { DrizzleDeliveryRepository, OneSignalProvider, PushDispatchService, PushService } from './push/index.js'
 export type {
+  AppUserOptInLookup,
   CreateDeliveryInput,
   DeliveryRepository,
   DeliveryRow,
@@ -177,6 +178,7 @@ export type {
   DataIngestionPayload,
   PushDispatchPayload,
   QueueName,
+  RetentionQueuePayload,
 } from './queues/index.js'
 
 // Queues
@@ -185,11 +187,36 @@ export {
   buildQueue,
   dataIngestionQueue,
   pushDispatchQueue,
+  retentionQueue,
   queueNames,
 } from './queues/index.js'
 // Builds
 export type { AppConfigLookup, BuildQueueAdapter, BuildServiceDeps, BuildStatus } from './builds/index.js'
 export { BuildError, BuildService } from './builds/index.js'
+
+// LGPD
+export type {
+  LGPDAppUserRepository,
+  LGPDDeliveryRepository,
+  LGPDDeviceRepository,
+  LGPDEventRepository,
+  LGPDProductRepository,
+  LGPDSegmentRepository,
+  LGPDServiceDeps,
+  TransactionRunner,
+  UserDataDeletionResult,
+} from './lgpd/index.js'
+export { LGPDService } from './lgpd/index.js'
+export { ProductRepository } from './lgpd/product.repository.js'
+
+// Retention
+export type {
+  DeliveryRetentionRepository,
+  EventRetentionRepository,
+  RetentionResult,
+  RetentionServiceDeps,
+} from './retention/index.js'
+export { RetentionService } from './retention/index.js'
 
 // Base Repository
 export { BaseRepository } from './repositories/base.repository.js'

@@ -314,6 +314,44 @@ describe('PushDispatchService', () => {
       expect(retryQueue!.jobs[0].name).toBe('push-dispatch-retry')
     })
 
+    it('should skip opted-out users when appUserLookup is provided', async () => {
+      const deviceRepo = new DeviceRepoSpy()
+      const deliveryRepo = new DeliveryRepoSpy()
+      const pushProvider = new PushProviderSpy()
+      const notificationRepo = new NotificationRepoSpy()
+
+      // User lookup: user-1 opted in, user-2 opted out
+      const appUserLookup = {
+        async findById(_tenantId: string, id: string) {
+          if (id === 'user-1') return { pushOptIn: true }
+          if (id === 'user-2') return { pushOptIn: false }
+          return undefined
+        },
+      }
+
+      const sut = new PushDispatchService({
+        deviceRepo: deviceRepo as unknown as DeviceRepository,
+        deliveryRepo,
+        pushProvider,
+        notificationRepo,
+        appUserLookup,
+      })
+
+      notificationRepo.result = makeNotification({ tenantId })
+      deviceRepo.activeDevices = [
+        makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' }),
+        makeDevice({ tenantId, appUserId: 'user-2', deviceToken: 'token-2' }),
+      ]
+
+      const result = await sut.dispatch(tenantId, notificationId, ['user-1', 'user-2'], appId)
+
+      expect(result.status).toBe('sent')
+      // Only user-1's device should be dispatched
+      expect(result.recipientCount).toBe(1)
+      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [string, PushNotificationPayload]
+      expect(payload.playerIds).toEqual(['token-1'])
+    })
+
     it('should not throw when provider fails and no retryQueue is configured', async () => {
       const { sut, deviceRepo, pushProvider, notificationRepo } = makeSut()
       notificationRepo.result = makeNotification({ tenantId })

@@ -38,4 +38,14 @@ export class DeliveryRepositorySpy extends SpyBase {
     this.trackCall('listByDevice', [tenantId, deviceId])
     return this.listResult
   }
+
+  async anonymizeByAppUser(tenantId: string, appUserId: string): Promise<number> {
+    this.trackCall('anonymizeByAppUser', [tenantId, appUserId])
+    return this.listResult.filter((d) => d.appUserId === appUserId).length
+  }
+
+  async deleteExpiredBefore(date: Date, batchSize: number): Promise<number> {
+    this.trackCall('deleteExpiredBefore', [date, batchSize])
+    return 0
+  }
 }

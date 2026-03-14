@@ -120,6 +120,19 @@ export class DeviceRepository extends BaseRepository {
       .where(and(eq(devices.tenantId, tenantId), eq(devices.id, id)))
   }
 
+  /**
+   * Delete all devices for a specific app user (LGPD data deletion).
+   * @returns number of deleted rows
+   */
+  async deleteByAppUser(tenantId: string, appUserId: string): Promise<number> {
+    this.assertTenantId(tenantId)
+    const deleted = await this.db
+      .delete(devices)
+      .where(and(eq(devices.tenantId, tenantId), eq(devices.appUserId, appUserId)))
+      .returning()
+    return deleted.length
+  }
+
   async countByUser(tenantId: string, appUserId: string): Promise<number> {
     this.assertTenantId(tenantId)
     const result = await this.db

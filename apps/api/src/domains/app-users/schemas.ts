@@ -22,3 +22,9 @@ export const updateAppUserSchema = z.object({
 })
 
 export type UpdateAppUserBody = z.infer<typeof updateAppUserSchema>
+
+export const updatePushOptInSchema = z.object({
+  optIn: z.boolean(),
+})
+
+export type UpdatePushOptInBody = z.infer<typeof updatePushOptInSchema>

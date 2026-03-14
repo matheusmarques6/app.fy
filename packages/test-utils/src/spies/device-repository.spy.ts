@@ -60,4 +60,9 @@ export class DeviceRepositorySpy extends SpyBase {
     this.trackCall('countByUser', [tenantId, appUserId])
     return this.listResult.filter((d) => d.appUserId === appUserId).length
   }
+
+  async deleteByAppUser(tenantId: string, appUserId: string): Promise<number> {
+    this.trackCall('deleteByAppUser', [tenantId, appUserId])
+    return this.listResult.filter((d) => d.appUserId === appUserId).length
+  }
 }

@@ -1,5 +1,8 @@
 import type { Database } from '@appfy/db'
 import { AnalyticsRepository, AnalyticsService } from './analytics/index.js'
+import { LGPDService } from './lgpd/index.js'
+import { ProductRepository } from './lgpd/product.repository.js'
+import { RetentionService } from './retention/index.js'
 import { AppConfigRepository, AppConfigService } from './app-configs/index.js'
 import { AppUserRepository, AppUserService } from './app-users/index.js'
 import { AuditLogRepository, AuditLogService } from './audit/index.js'
@@ -55,6 +58,9 @@ export interface Dependencies {
   auditLogService: AuditLogService
   eventIngestionService: EventIngestionService
   idempotencyStore: IdempotencyStore
+  lgpdService: LGPDService
+  retentionService: RetentionService
+  productRepo: ProductRepository
 }
 
 export interface FactoryConfig {
@@ -131,6 +137,42 @@ export function createDependencies(
       },
     })
 
+  const productRepo = overrides?.productRepo ?? new ProductRepository(config.db)
+  const lgpdService =
+    overrides?.lgpdService ??
+    new LGPDService({
+      appUserRepo,
+      eventRepo,
+      segmentRepo,
+      productRepo,
+      deviceRepo,
+      deliveryRepo: {
+        async anonymizeByAppUser(tenantId: string, appUserId: string) {
+          return (deliveryRepo as import('./notifications/delivery.repository.js').DrizzleDeliveryRepository).anonymizeByAppUser(tenantId, appUserId)
+        },
+      },
+      auditLog: auditLogService,
+      transactionRunner: {
+        async transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+          return config.db.transaction((tx) => fn(tx))
+        },
+      },
+    })
+  const retentionService =
+    overrides?.retentionService ??
+    new RetentionService({
+      deliveryRepo: {
+        async deleteExpiredBefore(date: Date, batchSize: number) {
+          return (deliveryRepo as import('./notifications/delivery.repository.js').DrizzleDeliveryRepository).deleteExpiredBefore(date, batchSize)
+        },
+      },
+      eventRepo: {
+        async deleteExpiredBefore(date: Date, batchSize: number) {
+          return eventRepo.deleteExpiredBefore(date, batchSize)
+        },
+      },
+    })
+
   return {
     notificationRepo,
     membershipRepo,
@@ -161,5 +203,8 @@ export function createDependencies(
     auditLogService,
     eventIngestionService,
     idempotencyStore,
+    lgpdService,
+    retentionService,
+    productRepo,
   }
 }

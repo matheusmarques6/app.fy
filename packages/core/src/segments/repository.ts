@@ -221,6 +221,24 @@ export class SegmentRepository extends BaseRepository {
     return deleted.length
   }
 
+  /**
+   * Remove an app user from ALL segments (LGPD data deletion).
+   * @returns number of segment memberships removed
+   */
+  async removeMemberFromAll(tenantId: string, appUserId: string): Promise<number> {
+    this.assertTenantId(tenantId)
+    const deleted = await this.db
+      .delete(appUserSegments)
+      .where(
+        and(
+          eq(appUserSegments.tenantId, tenantId),
+          eq(appUserSegments.appUserId, appUserId),
+        ),
+      )
+      .returning()
+    return deleted.length
+  }
+
   async replaceMembers(
     tenantId: string,
     segmentId: string,

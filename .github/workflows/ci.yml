@@ -1,0 +1,170 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10"
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Gate G1: Unit Tests + Coverage (80% threshold)
+  # ─────────────────────────────────────────────
+  unit-tests:
+    name: "G1: Unit Tests + Coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared (dependency)
+        run: pnpm --filter @appfy/shared build
+
+      - name: Run unit tests with coverage
+        run: pnpm test -- --coverage
+
+  # ─────────────────────────────────────────────
+  # Gate G2: Integration + Isolation Tests
+  # ─────────────────────────────────────────────
+  integration-tests:
+    name: "G2: Integration + Isolation Tests"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: appfy_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5433/appfy_test
+      DIRECT_URL: postgresql://test:test@localhost:5433/appfy_test
+      REDIS_URL: redis://localhost:6380
+      ENCRYPTION_SECRET: test-32-char-encryption-secret!!
+      JWT_SECRET: test-jwt-secret-for-ci-pipeline-32chars
+      SUPABASE_JWT_SECRET: test-supabase-jwt-secret-ci-32chars
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared (dependency)
+        run: pnpm --filter @appfy/shared build
+
+      - name: Generate DB client
+        run: pnpm db:generate
+
+      - name: Push schema to test DB
+        run: pnpm db:push
+
+      - name: Run integration tests
+        run: pnpm test:integration
+
+      - name: Run isolation tests
+        run: pnpm test:isolation
+
+  # ─────────────────────────────────────────────
+  # Gate G3: Security Scanning
+  # ─────────────────────────────────────────────
+  security:
+    name: "G3: Security"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  # ─────────────────────────────────────────────
+  # Gate G4: Build + Typecheck
+  # ─────────────────────────────────────────────
+  build:
+    name: "G4: Build + Typecheck"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Typecheck all packages
+        run: pnpm typecheck
+
+      - name: Lint all packages
+        run: pnpm lint

@@ -1,6 +1,6 @@
 import { notificationDeliveries } from '@appfy/db'
 import type { DeliveryStatus } from '@appfy/shared'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, lt } from 'drizzle-orm'
 import { BaseRepository } from '../repositories/base.repository.js'
 import type { CreateDeliveryInput, DeliveryRepository, DeliveryRow } from '../push/push-dispatch.service.js'
 import type { DeliveryRecord, DeliveryStatusRepository } from './delivery-status.service.js'
@@ -129,6 +129,49 @@ export class DrizzleDeliveryRepository
       )
       .limit(1)
     return rows[0] as DeliveryRecord | undefined
+  }
+
+  /**
+   * Anonymize all deliveries for a specific app user (LGPD: set app_user_id = null).
+   * Preserves delivery records for metrics — does NOT delete.
+   * @returns number of anonymized rows
+   */
+  async anonymizeByAppUser(tenantId: string, appUserId: string): Promise<number> {
+    this.assertTenantId(tenantId)
+    const rows = await this.db
+      .update(notificationDeliveries)
+      .set({ appUserId: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(notificationDeliveries.tenantId, tenantId),
+          eq(notificationDeliveries.appUserId, appUserId),
+        ),
+      )
+      .returning()
+    return rows.length
+  }
+
+  /**
+   * Delete deliveries older than the given date (data retention).
+   * Batch-limited to avoid long locks. Global operation (not per tenant).
+   * @returns number of deleted rows in this batch
+   */
+  async deleteExpiredBefore(date: Date, batchSize: number): Promise<number> {
+    // Select IDs to delete first, then delete those (batch approach)
+    const toDelete = await this.db
+      .select({ id: notificationDeliveries.id })
+      .from(notificationDeliveries)
+      .where(lt(notificationDeliveries.createdAt, date))
+      .limit(batchSize)
+
+    if (toDelete.length === 0) return 0
+
+    const ids = toDelete.map((r) => r.id)
+    const deleted = await this.db
+      .delete(notificationDeliveries)
+      .where(inArray(notificationDeliveries.id, ids))
+      .returning()
+    return deleted.length
   }
 
   /**

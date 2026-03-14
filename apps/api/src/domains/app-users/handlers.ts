@@ -1,7 +1,7 @@
 import type { Dependencies } from '@appfy/core'
 import { normalizePagination } from '@appfy/core'
 import type { Context } from 'hono'
-import type { CreateAppUserBody, UpdateAppUserBody } from './schemas.js'
+import type { CreateAppUserBody, UpdateAppUserBody, UpdatePushOptInBody } from './schemas.js'
 
 export function createAppUserHandlers(deps: Dependencies) {
   return {
@@ -51,6 +51,25 @@ export function createAppUserHandlers(deps: Dependencies) {
       })
 
       return c.json({ data: updated })
+    },
+
+    /** PATCH /app-users/:id/push-opt-in — Update push opt-in/opt-out (LGPD) */
+    async updatePushOptIn(c: Context) {
+      const tenantId = c.get('tenantId') as string
+      const id = c.req.param('id')!
+      const body = c.get('validatedBody' as never) as UpdatePushOptInBody
+
+      await deps.lgpdService.updatePushOptIn(tenantId, id, body.optIn)
+      return c.json({ success: true })
+    },
+
+    /** DELETE /app-users/:id/data — Delete all user data (LGPD right to be forgotten) */
+    async deleteUserData(c: Context) {
+      const tenantId = c.get('tenantId') as string
+      const id = c.req.param('id')!
+
+      const result = await deps.lgpdService.deleteUserData(tenantId, id)
+      return c.json({ data: result })
     },
   }
 }

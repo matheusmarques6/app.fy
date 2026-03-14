@@ -58,6 +58,11 @@ export interface RetryQueueAdapter {
   add(name: string, data: unknown, opts?: Record<string, unknown>): Promise<{ id: string }>
 }
 
+/** App user lookup for push opt-in check */
+export interface AppUserOptInLookup {
+  findById(tenantId: string, id: string): Promise<{ pushOptIn: boolean } | undefined>
+}
+
 export interface PushDispatchDeps {
   deviceRepo: DeviceRepository
   deliveryRepo: DeliveryRepository
@@ -66,6 +71,7 @@ export interface PushDispatchDeps {
   tenantRepo?: TenantLookup
   retryQueue?: RetryQueueAdapter
   auditLog?: AuditLogger
+  appUserLookup?: AppUserOptInLookup
 }
 
 /**
@@ -84,6 +90,7 @@ export class PushDispatchService {
   private readonly tenantRepo: TenantLookup | undefined
   private readonly retryQueue: RetryQueueAdapter | undefined
   private readonly auditLog: AuditLogger | undefined
+  private readonly appUserLookup: AppUserOptInLookup | undefined
 
   constructor(deps: PushDispatchDeps) {
     this.deviceRepo = deps.deviceRepo
@@ -93,6 +100,7 @@ export class PushDispatchService {
     this.tenantRepo = deps.tenantRepo
     this.retryQueue = deps.retryQueue
     this.auditLog = deps.auditLog
+    this.appUserLookup = deps.appUserLookup
   }
 
   async dispatch(
@@ -110,9 +118,21 @@ export class PushDispatchService {
     // 2. Resolve OneSignal app ID
     const resolvedAppId = appId ?? await this.resolveAppId(tenantId)
 
+    // 2.5. Filter out opted-out users (LGPD compliance)
+    let eligibleUserIds = targetUserIds
+    if (this.appUserLookup) {
+      const optInChecks = await Promise.all(
+        targetUserIds.map(async (userId) => {
+          const user = await this.appUserLookup!.findById(tenantId, userId)
+          return { userId, optedIn: user?.pushOptIn !== false }
+        }),
+      )
+      eligibleUserIds = optInChecks.filter((c) => c.optedIn).map((c) => c.userId)
+    }
+
     // 3. Fetch active devices for all target users
     const allDevices: DeviceRow[] = []
-    for (const userId of targetUserIds) {
+    for (const userId of eligibleUserIds) {
       const devices = await this.deviceRepo.findActiveByUser(tenantId, userId)
       allDevices.push(...devices)
     }

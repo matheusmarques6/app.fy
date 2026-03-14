@@ -1,6 +1,6 @@
 import { appEvents } from '@appfy/db'
 import type { Database } from '@appfy/db'
-import { and, count, desc, eq, gt } from 'drizzle-orm'
+import { and, count, desc, eq, gt, inArray, lt } from 'drizzle-orm'
 import { BaseRepository } from '../repositories/base.repository.js'
 import type { AppEventRow, CreateEventInput, EventFilters } from './types.js'
 
@@ -88,6 +88,43 @@ export class EventRepository extends BaseRepository {
       data: data as AppEventRow[],
       total: Number(countResult[0]?.total ?? 0),
     }
+  }
+
+  /**
+   * Delete all events for a specific app user (LGPD data deletion).
+   * @returns number of deleted rows
+   */
+  async deleteByAppUser(tenantId: string, appUserId: string): Promise<number> {
+    this.assertTenantId(tenantId)
+    const deleted = await this.db
+      .delete(appEvents)
+      .where(and(eq(appEvents.tenantId, tenantId), eq(appEvents.appUserId, appUserId)))
+      .returning()
+    return deleted.length
+  }
+
+  /**
+   * Delete events older than the given date (data retention).
+   * Uses LIMIT to batch deletions and avoid long locks.
+   * Global operation (not per tenant).
+   * @returns number of deleted rows in this batch
+   */
+  async deleteExpiredBefore(date: Date, batchSize: number): Promise<number> {
+    // Subquery approach: select IDs to delete, then delete those
+    const toDelete = await this.db
+      .select({ id: appEvents.id })
+      .from(appEvents)
+      .where(lt(appEvents.createdAt, date))
+      .limit(batchSize)
+
+    if (toDelete.length === 0) return 0
+
+    const ids = toDelete.map((r) => r.id)
+    const deleted = await this.db
+      .delete(appEvents)
+      .where(inArray(appEvents.id, ids))
+      .returning()
+    return deleted.length
   }
 
   async count(tenantId: string, filters?: EventFilters): Promise<number> {
