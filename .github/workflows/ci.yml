@@ -12,7 +12,6 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
-  PNPM_VERSION: "10"
 
 jobs:
   # ─────────────────────────────────────────────
@@ -21,12 +20,11 @@ jobs:
   unit-tests:
     name: "G1: Unit Tests + Coverage"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -48,6 +46,7 @@ jobs:
   integration-tests:
     name: "G2: Integration + Isolation Tests"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -75,15 +74,13 @@ jobs:
       DATABASE_URL: postgresql://test:test@localhost:5433/appfy_test
       DIRECT_URL: postgresql://test:test@localhost:5433/appfy_test
       REDIS_URL: redis://localhost:6380
-      ENCRYPTION_SECRET: test-32-char-encryption-secret!!
-      JWT_SECRET: test-jwt-secret-for-ci-pipeline-32chars
-      SUPABASE_JWT_SECRET: test-supabase-jwt-secret-ci-32chars
+      ENCRYPTION_SECRET: ${{ secrets.TEST_ENCRYPTION_SECRET || 'test-32-char-encryption-secret!!' }}
+      JWT_SECRET: ${{ secrets.TEST_JWT_SECRET || 'test-jwt-secret-for-ci-pipeline-32chars' }}
+      SUPABASE_JWT_SECRET: ${{ secrets.TEST_SUPABASE_JWT_SECRET || 'test-supabase-jwt-secret-ci-32chars' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -117,6 +114,7 @@ jobs:
   security:
     name: "G3: Security"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       security-events: write
     steps:
@@ -125,8 +123,6 @@ jobs:
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -140,7 +136,7 @@ jobs:
         run: pnpm audit --audit-level=high
 
       - name: TruffleHog Secret Scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.88.0
         with:
           extra_args: --only-verified
 
@@ -158,12 +154,11 @@ jobs:
   build:
     name: "G4: Build + Typecheck"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:

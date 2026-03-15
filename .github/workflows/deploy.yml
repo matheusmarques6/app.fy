@@ -15,6 +15,7 @@ jobs:
   ci-check:
     name: "Wait for CI"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Verify CI passed
         uses: lewagon/wait-on-check-action@v1.3.4
@@ -28,6 +29,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           check-name: "G2: Integration + Isolation Tests"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+      - name: Verify Security passed
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "G3: Security"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
       - name: Verify Build passed
@@ -44,6 +52,7 @@ jobs:
   deploy-staging:
     name: "G5: Deploy Staging"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [ci-check]
     environment: staging
     steps:
@@ -96,13 +105,14 @@ jobs:
   smoke-tests:
     name: "G6: Smoke Tests"
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [deploy-staging]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: "10"
 
       - uses: actions/setup-node@v4
         with:
@@ -116,26 +126,67 @@ jobs:
       - name: Smoke Tests
         env:
           STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+          STAGING_CONSOLE_URL: ${{ vars.STAGING_CONSOLE_URL }}
         run: |
           echo "Running smoke tests against staging..."
+          FAILURES=0
 
-          # Health endpoint
-          curl -sf "$STAGING_API_URL/health" || { echo "FAIL: /health"; exit 1; }
-          echo "PASS: /health"
+          # 1. Health endpoint (API + DB connectivity)
+          if curl -sf "$STAGING_API_URL/health" > /dev/null 2>&1; then
+            echo "PASS: /health"
+          else
+            echo "FAIL: /health unreachable"
+            FAILURES=$((FAILURES+1))
+          fi
 
-          # API responds with 401 for unauthenticated requests (not 500)
+          # 2. Auth guard — unauthenticated requests return 401/403, not 500
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_API_URL/api/notifications")
           if [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
             echo "PASS: /api/notifications returns auth error (expected)"
           else
             echo "FAIL: /api/notifications returned $STATUS (expected 401/403)"
-            exit 1
+            FAILURES=$((FAILURES+1))
           fi
 
+          # 3. Auth guard on second endpoint
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_API_URL/api/tenants")
+          if [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
+            echo "PASS: /api/tenants returns auth error (expected)"
+          else
+            echo "FAIL: /api/tenants returned $STATUS (expected 401/403)"
+            FAILURES=$((FAILURES+1))
+          fi
+
+          # 4. Console is reachable
+          if [ -n "$STAGING_CONSOLE_URL" ]; then
+            CONSOLE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_CONSOLE_URL")
+            if [ "$CONSOLE_STATUS" -ge 200 ] && [ "$CONSOLE_STATUS" -lt 400 ]; then
+              echo "PASS: Console reachable ($CONSOLE_STATUS)"
+            else
+              echo "FAIL: Console returned $CONSOLE_STATUS"
+              FAILURES=$((FAILURES+1))
+            fi
+          else
+            echo "SKIP: STAGING_CONSOLE_URL not set"
+          fi
+
+          # 5. Invalid route returns 404, not 500
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_API_URL/api/nonexistent-route")
+          if [ "$STATUS" = "404" ]; then
+            echo "PASS: Unknown route returns 404"
+          else
+            echo "FAIL: Unknown route returned $STATUS (expected 404)"
+            FAILURES=$((FAILURES+1))
+          fi
+
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "FAILED: $FAILURES smoke test(s) failed"
+            exit 1
+          fi
           echo "All smoke tests passed"
 
       # Auto-rollback on failure: redeploy previous commit
-      - name: Rollback on Failure
+      - name: Rollback Railway on Failure
         if: failure()
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -143,12 +194,29 @@ jobs:
           echo "Smoke tests failed — rolling back staging to previous commit"
           npm install -g @railway/cli
           PREV_SHA=$(git rev-parse HEAD~1)
-          git checkout "$PREV_SHA"
+          git checkout "$PREV_SHA" -- .
           railway up --service api --environment staging
           railway up --service workers-push --environment staging
           railway up --service workers-ingestion --environment staging
           railway up --service workers-analytics --environment staging
-          echo "Rollback deployed from $PREV_SHA"
+          echo "Railway rollback deployed from $PREV_SHA"
+
+      - name: Rollback Console on Failure
+        if: failure()
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          echo "Rolling back Console to previous Vercel deployment"
+          npm install -g vercel
+          PREV_DEPLOY=$(vercel list --token=$VERCEL_TOKEN --meta gitSha=$(git rev-parse HEAD~1) 2>/dev/null | grep -m1 'https://' | awk '{print $2}')
+          if [ -n "$PREV_DEPLOY" ]; then
+            vercel promote "$PREV_DEPLOY" --token=$VERCEL_TOKEN
+            echo "Console rollback promoted: $PREV_DEPLOY"
+          else
+            echo "WARNING: Could not find previous Vercel deployment to rollback"
+          fi
 
   # ─────────────────────────────────────────────
   # Gate G7: Manual Approval → Production Deploy
@@ -156,6 +224,7 @@ jobs:
   deploy-production:
     name: "G7: Deploy Production"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [smoke-tests]
     environment: production  # Requires manual approval configured in GitHub repo settings
     steps:
