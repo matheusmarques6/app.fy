@@ -34,6 +34,13 @@ export default defineWorkspace([
       name: 'isolation',
       include: ['**/*.isolation.spec.ts'],
       setupFiles: ['packages/test-utils/src/helpers/setup-db.ts'],
+      pool: 'forks',
+      poolOptions: {
+        forks: { singleFork: true },
+      },
+      sequence: { concurrent: false },
+      hookTimeout: 60000,
+      testTimeout: 30000,
     },
   },
 ])

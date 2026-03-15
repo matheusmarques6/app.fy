@@ -15,16 +15,13 @@
  * 4. JWT with invalid tenant_id -> zero results
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import {
-  withTenantJwt,
-  withoutJwt,
-  isRlsEnabled,
-} from '../helpers/rls-asserter.js'
+import { withTenantJwt, withoutJwt, isRlsEnabled } from '../helpers/rls-asserter.js'
 
 const TENANT_SCOPED_TABLES = [
   'app_configs',
   'app_users',
   'devices',
+  'segments',
   'app_user_segments',
   'app_user_products',
   'app_events',
@@ -65,9 +62,9 @@ function rlsScenariosForTable(
     it('Tenant A reads only own data', async () => {
       const rows = await queryAs(tenantAId, userAId, `SELECT * FROM ${table}`)
       expect((rows as unknown[]).length).toBeGreaterThan(0)
-      expect(
-        (rows as Array<{ tenant_id: string }>).every((r) => r.tenant_id === tenantAId),
-      ).toBe(true)
+      expect((rows as Array<{ tenant_id: string }>).every((r) => r.tenant_id === tenantAId)).toBe(
+        true,
+      )
     })
 
     it('Tenant A CANNOT read Tenant B data', async () => {
@@ -92,7 +89,7 @@ function rlsScenariosForTable(
   })
 }
 
-testOrSkip('RLS Policy Tests (Story 2.2)', () => {
+testOrSkip('RLS Policy Tests (Story 2.2)', { timeout: 60000 }, () => {
   const tenantAId = crypto.randomUUID()
   const tenantBId = crypto.randomUUID()
   const userAId = crypto.randomUUID()
@@ -109,90 +106,106 @@ testOrSkip('RLS Policy Tests (Story 2.2)', () => {
 
   beforeAll(async () => {
     const postgres = (await import('postgres')).default
-    pgSql = postgres(DATABASE_URL!)
+    pgSql = postgres(DATABASE_URL!, { prepare: false })
     const sql = pgSql as ReturnType<typeof postgres>
 
-    // ---- Seed base data (service_role bypasses RLS) ----
-    await sql`INSERT INTO plans (id, name, price_monthly, price_yearly, notification_limit, features)
-      VALUES (${planId}, 'starter', 12700, 127000, 15, '{"manual": true}'::jsonb)
-      ON CONFLICT DO NOTHING`
+    // ---- Seed base data in a single transaction (service_role bypasses RLS) ----
+    const slugA = `rls-a-${Date.now()}`
+    const slugB = `rls-b-${Date.now()}`
+    const emailA = `rls-a-${Date.now()}@test.com`
+    const emailB = `rls-b-${Date.now()}@test.com`
 
-    await sql`INSERT INTO tenants (id, name, slug, platform, plan_id)
-      VALUES (${tenantAId}, 'Tenant A', ${`rls-a-${Date.now()}`}, 'shopify', ${planId})`
-    await sql`INSERT INTO tenants (id, name, slug, platform, plan_id)
-      VALUES (${tenantBId}, 'Tenant B', ${`rls-b-${Date.now()}`}, 'shopify', ${planId})`
+    // biome-ignore lint/suspicious/noExplicitAny: postgres.js dynamic import type
+    await sql.begin(async (tx: any) => {
+      await tx`INSERT INTO plans (id, name, price_monthly, price_yearly, notification_limit, features)
+        VALUES (${planId}, 'starter', 12700, 127000, 15, '{"manual": true}'::jsonb)
+        ON CONFLICT DO NOTHING`
 
-    await sql`INSERT INTO users (id, email, name)
-      VALUES (${userAId}, ${`rls-a-${Date.now()}@test.com`}, 'User A')`
-    await sql`INSERT INTO users (id, email, name)
-      VALUES (${userBId}, ${`rls-b-${Date.now()}@test.com`}, 'User B')`
+      await tx`INSERT INTO tenants (id, name, slug, platform, plan_id)
+        VALUES (${tenantAId}, 'Tenant A', ${slugA}, 'shopify', ${planId})`
+      await tx`INSERT INTO tenants (id, name, slug, platform, plan_id)
+        VALUES (${tenantBId}, 'Tenant B', ${slugB}, 'shopify', ${planId})`
 
-    await sql`INSERT INTO memberships (user_id, tenant_id, role)
-      VALUES (${userAId}, ${tenantAId}, 'owner')`
-    await sql`INSERT INTO memberships (user_id, tenant_id, role)
-      VALUES (${userBId}, ${tenantBId}, 'owner')`
+      await tx`INSERT INTO users (id, email, name)
+        VALUES (${userAId}, ${emailA}, 'User A')`
+      await tx`INSERT INTO users (id, email, name)
+        VALUES (${userBId}, ${emailB}, 'User B')`
 
-    // ---- Seed tenant-scoped data for all tables ----
+      await tx`INSERT INTO memberships (user_id, tenant_id, role)
+        VALUES (${userAId}, ${tenantAId}, 'owner')`
+      await tx`INSERT INTO memberships (user_id, tenant_id, role)
+        VALUES (${userBId}, ${tenantBId}, 'owner')`
+    })
 
-    // notifications
-    await sql`INSERT INTO notifications (id, tenant_id, type, title, body, status)
-      VALUES (${notifAId}, ${tenantAId}, 'manual', 'RLS A', 'Body A', 'draft')`
-    await sql`INSERT INTO notifications (id, tenant_id, type, title, body, status)
-      VALUES (${notifBId}, ${tenantBId}, 'manual', 'RLS B', 'Body B', 'draft')`
+    // ---- Seed tenant-scoped data in a single transaction ----
+    // biome-ignore lint/suspicious/noExplicitAny: postgres.js dynamic import type
+    await sql.begin(async (tx: any) => {
+      // notifications
+      await tx`INSERT INTO notifications (id, tenant_id, type, title, body, status)
+        VALUES (${notifAId}, ${tenantAId}, 'manual', 'RLS A', 'Body A', 'draft')`
+      await tx`INSERT INTO notifications (id, tenant_id, type, title, body, status)
+        VALUES (${notifBId}, ${tenantBId}, 'manual', 'RLS B', 'Body B', 'draft')`
 
-    // app_users
-    await sql`INSERT INTO app_users (id, tenant_id, email, name)
-      VALUES (${appUserAId}, ${tenantAId}, 'rls-a@test.com', 'App A')`
-    await sql`INSERT INTO app_users (id, tenant_id, email, name)
-      VALUES (${appUserBId}, ${tenantBId}, 'rls-b@test.com', 'App B')`
+      // app_users
+      await tx`INSERT INTO app_users (id, tenant_id, email, name)
+        VALUES (${appUserAId}, ${tenantAId}, 'rls-a@test.com', 'App A')`
+      await tx`INSERT INTO app_users (id, tenant_id, email, name)
+        VALUES (${appUserBId}, ${tenantBId}, 'rls-b@test.com', 'App B')`
 
-    // devices
-    await sql`INSERT INTO devices (id, tenant_id, app_user_id, platform, device_token)
-      VALUES (${deviceAId}, ${tenantAId}, ${appUserAId}, 'android', 'tok-a')`
-    await sql`INSERT INTO devices (id, tenant_id, app_user_id, platform, device_token)
-      VALUES (${deviceBId}, ${tenantBId}, ${appUserBId}, 'ios', 'tok-b')`
+      // devices
+      await tx`INSERT INTO devices (id, tenant_id, app_user_id, platform, device_token)
+        VALUES (${deviceAId}, ${tenantAId}, ${appUserAId}, 'android', 'tok-a')`
+      await tx`INSERT INTO devices (id, tenant_id, app_user_id, platform, device_token)
+        VALUES (${deviceBId}, ${tenantBId}, ${appUserBId}, 'ios', 'tok-b')`
 
-    // app_events
-    await sql`INSERT INTO app_events (tenant_id, app_user_id, event_type)
-      VALUES (${tenantAId}, ${appUserAId}, 'app_opened')`
-    await sql`INSERT INTO app_events (tenant_id, app_user_id, event_type)
-      VALUES (${tenantBId}, ${appUserBId}, 'app_opened')`
+      // app_events
+      await tx`INSERT INTO app_events (tenant_id, app_user_id, event_type)
+        VALUES (${tenantAId}, ${appUserAId}, 'app_opened')`
+      await tx`INSERT INTO app_events (tenant_id, app_user_id, event_type)
+        VALUES (${tenantBId}, ${appUserBId}, 'app_opened')`
 
-    // notification_deliveries
-    await sql`INSERT INTO notification_deliveries (tenant_id, notification_id, device_id, app_user_id, status)
-      VALUES (${tenantAId}, ${notifAId}, ${deviceAId}, ${appUserAId}, 'pending')`
-    await sql`INSERT INTO notification_deliveries (tenant_id, notification_id, device_id, app_user_id, status)
-      VALUES (${tenantBId}, ${notifBId}, ${deviceBId}, ${appUserBId}, 'pending')`
+      // notification_deliveries
+      await tx`INSERT INTO notification_deliveries (tenant_id, notification_id, device_id, app_user_id, status)
+        VALUES (${tenantAId}, ${notifAId}, ${deviceAId}, ${appUserAId}, 'pending')`
+      await tx`INSERT INTO notification_deliveries (tenant_id, notification_id, device_id, app_user_id, status)
+        VALUES (${tenantBId}, ${notifBId}, ${deviceBId}, ${appUserBId}, 'pending')`
 
-    // automation_configs
-    await sql`INSERT INTO automation_configs (tenant_id, flow_type, is_enabled, delay_seconds, template_title, template_body)
-      VALUES (${tenantAId}, 'cart_abandoned', true, 3600, 'A Cart', 'Body A')`
-    await sql`INSERT INTO automation_configs (tenant_id, flow_type, is_enabled, delay_seconds, template_title, template_body)
-      VALUES (${tenantBId}, 'cart_abandoned', true, 3600, 'B Cart', 'Body B')`
+      // automation_configs
+      await tx`INSERT INTO automation_configs (tenant_id, flow_type, is_enabled, delay_seconds, template_title, template_body)
+        VALUES (${tenantAId}, 'cart_abandoned', true, 3600, 'A Cart', 'Body A')`
+      await tx`INSERT INTO automation_configs (tenant_id, flow_type, is_enabled, delay_seconds, template_title, template_body)
+        Values (${tenantBId}, 'cart_abandoned', true, 3600, 'B Cart', 'Body B')`
 
-    // audit_log
-    await sql`INSERT INTO audit_log (tenant_id, action, resource)
-      VALUES (${tenantAId}, 'rls_test', 'test')`
-    await sql`INSERT INTO audit_log (tenant_id, action, resource)
-      VALUES (${tenantBId}, 'rls_test', 'test')`
+      // audit_log
+      await tx`INSERT INTO audit_log (tenant_id, action, resource)
+        VALUES (${tenantAId}, 'rls_test', 'test')`
+      await tx`INSERT INTO audit_log (tenant_id, action, resource)
+        VALUES (${tenantBId}, 'rls_test', 'test')`
 
-    // app_configs
-    await sql`INSERT INTO app_configs (tenant_id, app_name)
-      VALUES (${tenantAId}, 'App A')`
-    await sql`INSERT INTO app_configs (tenant_id, app_name)
-      VALUES (${tenantBId}, 'App B')`
+      // app_configs
+      await tx`INSERT INTO app_configs (tenant_id, app_name)
+        VALUES (${tenantAId}, 'App A')`
+      await tx`INSERT INTO app_configs (tenant_id, app_name)
+        VALUES (${tenantBId}, 'App B')`
 
-    // segments
-    await sql`INSERT INTO segments (id, tenant_id, name, rules)
-      VALUES (${segmentAId}, ${tenantAId}, 'Seg A', '{"operator":"AND","conditions":[]}'::jsonb)`
-    await sql`INSERT INTO segments (id, tenant_id, name, rules)
-      VALUES (${segmentBId}, ${tenantBId}, 'Seg B', '{"operator":"AND","conditions":[]}'::jsonb)`
+      // segments
+      await tx`INSERT INTO segments (id, tenant_id, name, rules)
+        VALUES (${segmentAId}, ${tenantAId}, 'Seg A', '{"operator":"AND","conditions":[]}'::jsonb)`
+      await tx`INSERT INTO segments (id, tenant_id, name, rules)
+        VALUES (${segmentBId}, ${tenantBId}, 'Seg B', '{"operator":"AND","conditions":[]}'::jsonb)`
 
-    // app_user_segments
-    await sql`INSERT INTO app_user_segments (tenant_id, segment_id, app_user_id)
-      VALUES (${tenantAId}, ${segmentAId}, ${appUserAId})`
-    await sql`INSERT INTO app_user_segments (tenant_id, segment_id, app_user_id)
-      VALUES (${tenantBId}, ${segmentBId}, ${appUserBId})`
+      // app_user_segments
+      await tx`INSERT INTO app_user_segments (tenant_id, segment_id, app_user_id)
+        VALUES (${tenantAId}, ${segmentAId}, ${appUserAId})`
+      await tx`INSERT INTO app_user_segments (tenant_id, segment_id, app_user_id)
+        VALUES (${tenantBId}, ${segmentBId}, ${appUserBId})`
+
+      // app_user_products
+      await tx`INSERT INTO app_user_products (tenant_id, app_user_id, product_id_external, product_name, interaction_type)
+        VALUES (${tenantAId}, ${appUserAId}, 'prod-a', 'Product A', 'viewed')`
+      await tx`INSERT INTO app_user_products (tenant_id, app_user_id, product_id_external, product_name, interaction_type)
+        VALUES (${tenantBId}, ${appUserBId}, 'prod-b', 'Product B', 'purchased')`
+    })
   })
 
   afterAll(async () => {
@@ -237,6 +250,7 @@ testOrSkip('RLS Policy Tests (Story 2.2)', () => {
   rlsScenariosForTable('app_configs', tenantAId, tenantBId, userAId)
   rlsScenariosForTable('segments', tenantAId, tenantBId, userAId)
   rlsScenariosForTable('app_user_segments', tenantAId, tenantBId, userAId)
+  rlsScenariosForTable('app_user_products', tenantAId, tenantBId, userAId)
 
   // ---- tenants (special case: membership-based) ----
   describe('RLS: tenants (special case)', () => {
@@ -265,9 +279,7 @@ testOrSkip('RLS Policy Tests (Story 2.2)', () => {
     it('User can SELECT own memberships', async () => {
       const rows = await queryAs(tenantAId, userAId, 'SELECT * FROM memberships')
       expect((rows as unknown[]).length).toBeGreaterThan(0)
-      expect(
-        (rows as Array<{ user_id: string }>).every((r) => r.user_id === userAId),
-      ).toBe(true)
+      expect((rows as Array<{ user_id: string }>).every((r) => r.user_id === userAId)).toBe(true)
     })
 
     it('User CANNOT SELECT other user memberships', async () => {

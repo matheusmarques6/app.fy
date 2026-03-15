@@ -3,7 +3,7 @@
 export type { Database } from './client.js'
 
 // Client
-export { createDrizzleClient } from './client.js'
+export { createPooledClient, createDirectClient, createDrizzleClient } from './client.js'
 export * from './schema/index.js'
 
 // Test utilities

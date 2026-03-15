@@ -86,9 +86,11 @@ export async function isRlsEnabled(
   tableName: string,
 ): Promise<boolean> {
   const rows = await sql`
-    SELECT relrowsecurity
-    FROM pg_class
-    WHERE relname = ${tableName}
+    SELECT c.relrowsecurity
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relname = ${tableName}
+      AND n.nspname = 'public'
   `
   return rows[0]?.relrowsecurity === true
 }

@@ -16,7 +16,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   createTestClient,
-  truncateAll,
   seedTenant,
   seedAppUser,
   seedDevice,
@@ -70,15 +69,17 @@ let tenantBId: string
 testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
   beforeAll(async () => {
     db = createTestClient()
-    await truncateAll(db)
-    const tenantA = await seedTenant(db)
-    const tenantB = await seedTenant(db)
+    // Use unique slugs to avoid collisions; skip TRUNCATE to prevent deadlocks
+    // when running concurrently with rls-policies tests
+    const tenantA = await seedTenant(db, { slug: `iso-a-${Date.now()}` })
+    const tenantB = await seedTenant(db, { slug: `iso-b-${Date.now()}` })
     tenantAId = tenantA.tenant.id
     tenantBId = tenantB.tenant.id
   })
 
   afterAll(async () => {
-    if (db) await truncateAll(db)
+    // Cleanup is handled by the next test's beforeAll truncate
+    // Avoid truncating here to prevent deadlocks with concurrent test suites
   })
 
   // ---- notifications ----
