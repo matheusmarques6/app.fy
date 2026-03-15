@@ -23,7 +23,6 @@ export async function setupTestDatabase(): Promise<void> {
   }
 
   // Dynamic import to avoid hard dependency on postgres at module level
-  // @ts-expect-error postgres may not be installed — it's a peer dependency
   const { default: postgres } = await import('postgres')
   // biome-ignore lint/suspicious/noExplicitAny: postgres driver type depends on runtime import
   const sql = (postgres as any)(url)

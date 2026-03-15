@@ -1,8 +1,12 @@
-import { notificationDeliveries } from '@appfy/db'
+import { devices, notificationDeliveries } from '@appfy/db'
 import type { DeliveryStatus } from '@appfy/shared'
 import { and, eq, inArray, lt } from 'drizzle-orm'
 import { BaseRepository } from '../repositories/base.repository.js'
-import type { CreateDeliveryInput, DeliveryRepository, DeliveryRow } from '../push/push-dispatch.service.js'
+import type {
+  CreateDeliveryInput,
+  DeliveryRepository,
+  DeliveryRow,
+} from '../push/push-dispatch.service.js'
 import type { DeliveryRecord, DeliveryStatusRepository } from './delivery-status.service.js'
 
 /**
@@ -79,12 +83,7 @@ export class DrizzleDeliveryRepository
         ...(tsField && { [tsField]: ts }),
         updatedAt: ts,
       })
-      .where(
-        and(
-          eq(notificationDeliveries.tenantId, tenantId),
-          eq(notificationDeliveries.id, id),
-        ),
-      )
+      .where(and(eq(notificationDeliveries.tenantId, tenantId), eq(notificationDeliveries.id, id)))
   }
 
   async updateManyStatus(
@@ -107,10 +106,105 @@ export class DrizzleDeliveryRepository
         updatedAt: ts,
       })
       .where(
+        and(eq(notificationDeliveries.tenantId, tenantId), inArray(notificationDeliveries.id, ids)),
+      )
+  }
+
+  async findPendingByNotification(
+    tenantId: string,
+    notificationId: string,
+  ): Promise<DeliveryRow[]> {
+    this.assertTenantId(tenantId)
+    const rows = await this.db
+      .select()
+      .from(notificationDeliveries)
+      .where(
         and(
           eq(notificationDeliveries.tenantId, tenantId),
-          inArray(notificationDeliveries.id, ids),
+          eq(notificationDeliveries.notificationId, notificationId),
+          eq(notificationDeliveries.status, 'pending'),
         ),
+      )
+    return rows as DeliveryRow[]
+  }
+
+  async updateManyExternalId(tenantId: string, ids: string[], externalId: string): Promise<void> {
+    this.assertTenantId(tenantId)
+    if (ids.length === 0) return
+
+    await this.db
+      .update(notificationDeliveries)
+      .set({
+        externalId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(notificationDeliveries.tenantId, tenantId), inArray(notificationDeliveries.id, ids)),
+      )
+  }
+
+  async findPendingByNotificationAndTokens(
+    tenantId: string,
+    notificationId: string,
+    deviceTokens: string[],
+  ): Promise<DeliveryRow[]> {
+    this.assertTenantId(tenantId)
+    if (deviceTokens.length === 0) return []
+
+    const rows = await this.db
+      .select({
+        id: notificationDeliveries.id,
+        tenantId: notificationDeliveries.tenantId,
+        notificationId: notificationDeliveries.notificationId,
+        deviceId: notificationDeliveries.deviceId,
+        appUserId: notificationDeliveries.appUserId,
+        status: notificationDeliveries.status,
+        sentAt: notificationDeliveries.sentAt,
+        deliveredAt: notificationDeliveries.deliveredAt,
+        openedAt: notificationDeliveries.openedAt,
+        clickedAt: notificationDeliveries.clickedAt,
+        convertedAt: notificationDeliveries.convertedAt,
+        externalId: notificationDeliveries.externalId,
+        errorMessage: notificationDeliveries.errorMessage,
+        createdAt: notificationDeliveries.createdAt,
+        updatedAt: notificationDeliveries.updatedAt,
+      })
+      .from(notificationDeliveries)
+      .innerJoin(devices, eq(notificationDeliveries.deviceId, devices.id))
+      .where(
+        and(
+          eq(notificationDeliveries.tenantId, tenantId),
+          eq(notificationDeliveries.notificationId, notificationId),
+          eq(notificationDeliveries.status, 'pending'),
+          inArray(devices.deviceToken, deviceTokens),
+        ),
+      )
+    return rows as DeliveryRow[]
+  }
+
+  /**
+   * Atomic update: sets status to 'sent', sentAt, AND externalId in a single UPDATE.
+   * Avoids the race condition of two separate calls (updateManyStatus + updateManyExternalId).
+   */
+  async updateManySent(
+    tenantId: string,
+    ids: string[],
+    externalId: string,
+    sentAt: Date,
+  ): Promise<void> {
+    this.assertTenantId(tenantId)
+    if (ids.length === 0) return
+
+    await this.db
+      .update(notificationDeliveries)
+      .set({
+        status: 'sent' as DeliveryStatus,
+        sentAt,
+        externalId,
+        updatedAt: sentAt,
+      })
+      .where(
+        and(eq(notificationDeliveries.tenantId, tenantId), inArray(notificationDeliveries.id, ids)),
       )
   }
 
@@ -121,12 +215,7 @@ export class DrizzleDeliveryRepository
     const rows = await this.db
       .select()
       .from(notificationDeliveries)
-      .where(
-        and(
-          eq(notificationDeliveries.tenantId, tenantId),
-          eq(notificationDeliveries.id, id),
-        ),
-      )
+      .where(and(eq(notificationDeliveries.tenantId, tenantId), eq(notificationDeliveries.id, id)))
       .limit(1)
     return rows[0] as DeliveryRecord | undefined
   }

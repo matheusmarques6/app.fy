@@ -7,10 +7,33 @@ import type { PushProvider, PushNotificationPayload } from './push-provider.inte
 
 /** Delivery repository interface for push dispatch */
 export interface DeliveryRepository {
-  create(tenantId: string, notificationId: string, deviceId: string, appUserId?: string): Promise<DeliveryRow>
+  create(
+    tenantId: string,
+    notificationId: string,
+    deviceId: string,
+    appUserId?: string,
+  ): Promise<DeliveryRow>
   createMany(tenantId: string, records: CreateDeliveryInput[]): Promise<DeliveryRow[]>
-  updateStatus(tenantId: string, id: string, status: DeliveryStatus, timestamp?: Date): Promise<void>
-  updateManyStatus(tenantId: string, ids: string[], status: DeliveryStatus, timestamp?: Date): Promise<void>
+  updateStatus(
+    tenantId: string,
+    id: string,
+    status: DeliveryStatus,
+    timestamp?: Date,
+  ): Promise<void>
+  updateManyStatus(
+    tenantId: string,
+    ids: string[],
+    status: DeliveryStatus,
+    timestamp?: Date,
+  ): Promise<void>
+  findPendingByNotification(tenantId: string, notificationId: string): Promise<DeliveryRow[]>
+  findPendingByNotificationAndTokens(
+    tenantId: string,
+    notificationId: string,
+    deviceTokens: string[],
+  ): Promise<DeliveryRow[]>
+  updateManyExternalId(tenantId: string, ids: string[], externalId: string): Promise<void>
+  updateManySent(tenantId: string, ids: string[], externalId: string, sentAt: Date): Promise<void>
 }
 
 export interface CreateDeliveryInput {
@@ -31,6 +54,7 @@ export interface DeliveryRow {
   readonly openedAt: Date | null
   readonly clickedAt: Date | null
   readonly convertedAt: Date | null
+  readonly externalId: string | null
   readonly errorMessage: string | null
   readonly createdAt: Date
   readonly updatedAt: Date
@@ -116,7 +140,7 @@ export class PushDispatchService {
     }
 
     // 2. Resolve OneSignal app ID
-    const resolvedAppId = appId ?? await this.resolveAppId(tenantId)
+    const resolvedAppId = appId ?? (await this.resolveAppId(tenantId))
 
     // 2.5. Filter out opted-out users (LGPD compliance)
     let eligibleUserIds = targetUserIds
@@ -190,13 +214,10 @@ export class PushDispatchService {
       await this.deliveryRepo.updateManyStatus(tenantId, deliveryIds, 'sent', sentAt)
 
       if (this.auditLog) {
-        await this.auditLog.log(
-          tenantId,
-          'push.dispatched',
-          'notification',
-          notificationId,
-          { recipientCount: allDevices.length, deliveryCount: deliveries.length },
-        )
+        await this.auditLog.log(tenantId, 'push.dispatched', 'notification', notificationId, {
+          recipientCount: allDevices.length,
+          deliveryCount: deliveries.length,
+        })
       }
 
       return {
@@ -211,16 +232,20 @@ export class PushDispatchService {
 
       // 9. Queue for retry (graceful degradation)
       if (this.retryQueue) {
-        await this.retryQueue.add('push-dispatch-retry', {
-          tenantId,
-          notificationId,
-          targetUserIds,
-          appId: resolvedAppId,
-        }, {
-          delay: 30_000, // 30s backoff
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 30_000 },
-        })
+        await this.retryQueue.add(
+          'push-dispatch-retry',
+          {
+            tenantId,
+            notificationId,
+            targetUserIds,
+            appId: resolvedAppId,
+          },
+          {
+            delay: 30_000, // 30s backoff
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 30_000 },
+          },
+        )
       }
 
       return {

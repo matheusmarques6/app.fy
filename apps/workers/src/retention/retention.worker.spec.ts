@@ -14,21 +14,25 @@ class RetentionServiceSpy {
     return this.result
   }
 
-  async cleanExpiredDeliveries() { return this.result.deliveriesDeleted }
-  async cleanExpiredEvents() { return this.result.eventsDeleted }
+  async cleanExpiredDeliveries() {
+    return this.result.deliveriesDeleted
+  }
+  async cleanExpiredEvents() {
+    return this.result.eventsDeleted
+  }
 }
 
 class LoggerSpy {
   messages: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
 
   info(message: string, meta?: Record<string, unknown>) {
-    this.messages.push({ level: 'info', message, meta })
+    this.messages.push({ level: 'info', message, ...(meta !== undefined && { meta }) })
   }
   warn(message: string, meta?: Record<string, unknown>) {
-    this.messages.push({ level: 'warn', message, meta })
+    this.messages.push({ level: 'warn', message, ...(meta !== undefined && { meta }) })
   }
   error(message: string, meta?: Record<string, unknown>) {
-    this.messages.push({ level: 'error', message, meta })
+    this.messages.push({ level: 'error', message, ...(meta !== undefined && { meta }) })
   }
 }
 
@@ -57,9 +61,9 @@ describe('RetentionWorker', () => {
 
     // Should have 2 log messages (start + completed)
     expect(logger.messages).toHaveLength(2)
-    expect(logger.messages[0].message).toBe('Starting retention cleanup')
-    expect(logger.messages[1].message).toBe('Retention cleanup completed')
-    expect(logger.messages[1].meta).toEqual({
+    expect(logger.messages[0]!.message).toBe('Starting retention cleanup')
+    expect(logger.messages[1]!.message).toBe('Retention cleanup completed')
+    expect(logger.messages[1]!.meta).toEqual({
       jobId: 'job-1',
       deliveriesDeleted: 42,
       eventsDeleted: 15,

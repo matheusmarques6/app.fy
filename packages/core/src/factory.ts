@@ -23,6 +23,7 @@ import { NotificationRepository, NotificationService } from './notifications/ind
 import { OneSignalProvider } from './push/onesignal.provider.js'
 import { PushDispatchService } from './push/push-dispatch.service.js'
 import type { DeliveryRepository } from './push/push-dispatch.service.js'
+import type { QueueAdapter } from './automations/trigger.service.js'
 import type { PushProvider } from './push/push-provider.interface.js'
 import { PushService } from './push/push.service.js'
 import { SegmentRepository, SegmentService } from './segments/index.js'
@@ -61,6 +62,8 @@ export interface Dependencies {
   lgpdService: LGPDService
   retentionService: RetentionService
   productRepo: ProductRepository
+  deliveryRepo: DeliveryRepository
+  dataIngestionQueue: QueueAdapter
 }
 
 export interface FactoryConfig {
@@ -93,8 +96,7 @@ export function createDependencies(
     overrides?.notificationService ?? new NotificationService(notificationRepo)
   const tenantService = overrides?.tenantService ?? new TenantService(tenantRepo)
   const appUserService = overrides?.appUserService ?? new AppUserService(appUserRepo)
-  const deviceService =
-    overrides?.deviceService ?? new DeviceService({ deviceRepo, appUserRepo })
+  const deviceService = overrides?.deviceService ?? new DeviceService({ deviceRepo, appUserRepo })
   const automationService = overrides?.automationService ?? new AutomationService(automationRepo)
   const analyticsService = overrides?.analyticsService ?? new AnalyticsService(analyticsRepo)
   const appConfigService = overrides?.appConfigService ?? new AppConfigService(appConfigRepo)
@@ -104,15 +106,31 @@ export function createDependencies(
     overrides?.encryptionService ?? new EncryptionService(config.encryptionSecret)
   const auditLogRepo = overrides?.auditLogRepo ?? new AuditLogRepository(config.db)
   const auditLogService = overrides?.auditLogService ?? new AuditLogService(auditLogRepo)
-  const billingService = overrides?.billingService ?? new BillingService({
-    stripeProvider,
-    tenantRepo,
-    auditLogService,
-    planPriceRegistry: config.planPriceRegistry,
-    webhookSecret: config.stripeWebhookSecret,
-    automationRepo,
-  })
-  const deliveryRepo: DeliveryRepository = new DrizzleDeliveryRepository(config.db)
+  const billingService =
+    overrides?.billingService ??
+    new BillingService({
+      stripeProvider,
+      tenantRepo,
+      auditLogService,
+      planPriceRegistry: config.planPriceRegistry,
+      webhookSecret: config.stripeWebhookSecret,
+      automationRepo,
+    })
+  const deliveryRepo: DeliveryRepository =
+    overrides?.deliveryRepo ?? new DrizzleDeliveryRepository(config.db)
+  const dataIngestionQueue: QueueAdapter = overrides?.dataIngestionQueue ?? {
+    async add(name: string) {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'dataIngestionQueue.add called but no real queue wired — job discarded',
+          jobName: name,
+          timestamp: new Date().toISOString(),
+        }),
+      )
+      return { id: 'noop' }
+    },
+  }
   const pushDispatchService =
     overrides?.pushDispatchService ??
     new PushDispatchService({
@@ -123,8 +141,7 @@ export function createDependencies(
       tenantRepo,
     })
   const eventIngestionService =
-    overrides?.eventIngestionService ??
-    new EventIngestionService({ eventRepo })
+    overrides?.eventIngestionService ?? new EventIngestionService({ eventRepo })
   const idempotencyStore = overrides?.idempotencyStore ?? new InMemoryIdempotencyStore()
   const buildService =
     overrides?.buildService ??
@@ -164,7 +181,9 @@ export function createDependencies(
     new RetentionService({
       deliveryRepo: {
         async deleteExpiredBefore(date: Date, batchSize: number) {
-          return (deliveryRepo as import('./notifications/delivery.repository.js').DrizzleDeliveryRepository).deleteExpiredBefore(date, batchSize)
+          return (
+            deliveryRepo as import('./notifications/delivery.repository.js').DrizzleDeliveryRepository
+          ).deleteExpiredBefore(date, batchSize)
         },
       },
       eventRepo: {
@@ -207,5 +226,7 @@ export function createDependencies(
     lgpdService,
     retentionService,
     productRepo,
+    deliveryRepo,
+    dataIngestionQueue,
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Zap, Smartphone } from 'lucide-react'
 import { dashboardMetrics } from '@/lib/mock-data'
@@ -30,7 +30,9 @@ export function SystemOverview() {
           <div>
             <p className="text-sm text-muted-foreground">Status do App</p>
             <Badge variant="success" className="mt-1">
-              {dashboardMetrics.appStatus === 'published' ? 'Publicado' : dashboardMetrics.appStatus}
+              {dashboardMetrics.appStatus === 'published'
+                ? 'Publicado'
+                : dashboardMetrics.appStatus}
             </Badge>
           </div>
         </CardContent>

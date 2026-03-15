@@ -29,6 +29,7 @@ export const notificationDeliveries = pgTable(
       .notNull()
       .references(() => tenants.id),
     status: deliveryStatusEnum().notNull().default('pending'),
+    externalId: text('external_id'),
     errorMessage: text('error_message'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),

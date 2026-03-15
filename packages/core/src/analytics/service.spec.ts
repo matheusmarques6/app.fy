@@ -51,7 +51,11 @@ class AnalyticsRepositorySpy {
   revenueResult: RevenueDataPoint[] = []
 
   getTopNotificationsCallCount = 0
-  getTopNotificationsCalledWith: Array<{ tenantId: string; period: AnalyticsPeriod; limit?: number }> = []
+  getTopNotificationsCalledWith: Array<{
+    tenantId: string
+    period: AnalyticsPeriod
+    limit?: number
+  }> = []
   topNotificationsResult: TopNotification[] = []
 
   async getOverview(tenantId: string, period: AnalyticsPeriod) {
@@ -80,7 +84,11 @@ class AnalyticsRepositorySpy {
 
   async getTopNotifications(tenantId: string, period: AnalyticsPeriod, limit?: number) {
     this.getTopNotificationsCallCount++
-    this.getTopNotificationsCalledWith.push({ tenantId, period, limit })
+    this.getTopNotificationsCalledWith.push({
+      tenantId,
+      period,
+      ...(limit !== undefined && { limit }),
+    })
     return this.topNotificationsResult
   }
 }

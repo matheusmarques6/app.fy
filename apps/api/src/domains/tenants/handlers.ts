@@ -7,10 +7,9 @@ export function createTenantHandlers(deps: Dependencies) {
   return {
     /** GET /tenants — List user's tenants (via memberships) */
     async list(c: Context) {
-      // userId will be used when MembershipRepository is wired
-      void c.get('userId')
-      // TODO: List tenants via MembershipRepository for userId
-      return c.json({ data: [] })
+      const userId = c.get('userId') as string
+      const userTenants = await deps.membershipRepo.findByUserId(userId)
+      return c.json({ data: userTenants })
     },
 
     /** GET /tenants/:id — Get tenant detail */
@@ -28,7 +27,10 @@ export function createTenantHandlers(deps: Dependencies) {
       if (body.name !== undefined) {
         input.name = body.name
       }
-      const updated = await deps.tenantService.update(tenantId, input as Parameters<typeof deps.tenantService.update>[1])
+      const updated = await deps.tenantService.update(
+        tenantId,
+        input as Parameters<typeof deps.tenantService.update>[1],
+      )
       return c.json({ data: updated })
     },
 

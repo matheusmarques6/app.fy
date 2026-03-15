@@ -6,7 +6,10 @@ import { checkPlanLimit, PlanLimitService } from './plan-limit.service.js'
 class TenantRepoSpy {
   calls: Record<string, number> = {}
   lastArgs: Record<string, unknown[]> = {}
-  private track(m: string, args: unknown[]) { this.calls[m] = (this.calls[m] ?? 0) + 1; this.lastArgs[m] = args }
+  private track(m: string, args: unknown[]) {
+    this.calls[m] = (this.calls[m] ?? 0) + 1
+    this.lastArgs[m] = args
+  }
 
   async incrementNotificationCount(tenantId: string, amount: number) {
     this.track('incrementNotificationCount', [tenantId, amount])
@@ -15,10 +18,21 @@ class TenantRepoSpy {
 
 function makeTenant(overrides: Partial<TenantRow> = {}): TenantRow {
   return {
-    id: 'tenant-1', name: 'Test', slug: 'test', platform: 'starter',
-    onesignalAppId: null, isActive: true, notificationCountCurrentPeriod: 0,
-    notificationLimit: 15, stripeCustomerId: null, stripeSubscriptionId: null,
-    planId: null, createdAt: new Date(), updatedAt: new Date(),
+    id: 'tenant-1',
+    name: 'Test',
+    slug: 'test',
+    platform: 'starter',
+    platformStoreUrl: null,
+    platformCredentials: null,
+    onesignalAppId: null,
+    isActive: true,
+    notificationCountCurrentPeriod: 0,
+    notificationLimit: 15,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    planId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   }
 }
@@ -80,19 +94,43 @@ describe('Plan Limits (Layer 1 & 2)', () => {
     beforeEach(() => makeSut())
 
     it('should not throw for manual under limit', async () => {
-      await expect(sut.assertCanSendNotification(tenantId, 'manual', makeTenant({ notificationCountCurrentPeriod: 10 }))).resolves.not.toThrow()
+      await expect(
+        sut.assertCanSendNotification(
+          tenantId,
+          'manual',
+          makeTenant({ notificationCountCurrentPeriod: 10 }),
+        ),
+      ).resolves.not.toThrow()
     })
 
     it('should throw for manual at limit', async () => {
-      await expect(sut.assertCanSendNotification(tenantId, 'manual', makeTenant({ notificationCountCurrentPeriod: 15 }))).rejects.toThrow(NotificationLimitExceededError)
+      await expect(
+        sut.assertCanSendNotification(
+          tenantId,
+          'manual',
+          makeTenant({ notificationCountCurrentPeriod: 15 }),
+        ),
+      ).rejects.toThrow(NotificationLimitExceededError)
     })
 
     it('should NOT throw for automated at limit', async () => {
-      await expect(sut.assertCanSendNotification(tenantId, 'automated', makeTenant({ notificationCountCurrentPeriod: 999 }))).resolves.not.toThrow()
+      await expect(
+        sut.assertCanSendNotification(
+          tenantId,
+          'automated',
+          makeTenant({ notificationCountCurrentPeriod: 999 }),
+        ),
+      ).resolves.not.toThrow()
     })
 
     it('should not throw for Business plan', async () => {
-      await expect(sut.assertCanSendNotification(tenantId, 'manual', makeTenant({ platform: 'business', notificationCountCurrentPeriod: 500 }))).resolves.not.toThrow()
+      await expect(
+        sut.assertCanSendNotification(
+          tenantId,
+          'manual',
+          makeTenant({ platform: 'business', notificationCountCurrentPeriod: 500 }),
+        ),
+      ).resolves.not.toThrow()
     })
 
     it('should increment count', async () => {

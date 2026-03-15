@@ -66,8 +66,8 @@ function makeSut() {
 
   // Inject tenantId and userId into context
   app.use('/*', async (c, next) => {
-    c.set('tenantId', TENANT_ID)
-    c.set('userId', USER_ID)
+    c.set('tenantId' as never, TENANT_ID)
+    c.set('userId' as never, USER_ID)
     await next()
   })
 
@@ -87,7 +87,7 @@ describe('Build Handlers', () => {
       const { app, buildService } = makeSut()
 
       const res = await app.request('/build', { method: 'POST' })
-      const json = await res.json()
+      const json = (await res.json()) as { data: Record<string, unknown> }
 
       expect(res.status).toBe(201)
       expect(json.data.status).toBe('building')
@@ -100,10 +100,12 @@ describe('Build Handlers', () => {
 
     it('should return 400 when build cannot be triggered', async () => {
       const { app, buildService } = makeSut()
-      buildService.triggerBuildError = new BuildError('Cannot start build: current status is "building"')
+      buildService.triggerBuildError = new BuildError(
+        'Cannot start build: current status is "building"',
+      )
 
       const res = await app.request('/build', { method: 'POST' })
-      const json = await res.json()
+      const json = (await res.json()) as { error: string }
 
       expect(res.status).toBe(400)
       expect(json.error).toContain('Cannot start build')
@@ -114,7 +116,7 @@ describe('Build Handlers', () => {
       buildService.triggerBuildError = new BuildError('App config not found for tenant')
 
       const res = await app.request('/build', { method: 'POST' })
-      const json = await res.json()
+      const json = (await res.json()) as { error: string }
 
       expect(res.status).toBe(400)
       expect(json.error).toContain('App config not found')
@@ -130,7 +132,7 @@ describe('Build Handlers', () => {
       }
 
       const res = await app.request('/build/status')
-      const json = await res.json()
+      const json = (await res.json()) as { data: Record<string, unknown> }
 
       expect(res.status).toBe(200)
       expect(json.data.status).toBe('ready')
@@ -141,7 +143,7 @@ describe('Build Handlers', () => {
       const { app } = makeSut()
 
       const res = await app.request('/build/status')
-      const json = await res.json()
+      const json = (await res.json()) as { data: Record<string, unknown> }
 
       expect(res.status).toBe(200)
       expect(json.data.status).toBe('pending')
@@ -153,7 +155,7 @@ describe('Build Handlers', () => {
       buildService.buildStatusError = new BuildError('App config not found for tenant')
 
       const res = await app.request('/build/status')
-      const json = await res.json()
+      const json = (await res.json()) as { error: string }
 
       expect(res.status).toBe(404)
       expect(json.error).toContain('App config not found')

@@ -19,7 +19,9 @@ export async function createServerClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(
+          cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>,
+        ) {
           for (const { name, value, options } of cookiesToSet) {
             cookieStore.set(name, value, options)
           }

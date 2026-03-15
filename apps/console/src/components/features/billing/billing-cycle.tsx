@@ -1,7 +1,7 @@
 'use client'
 
 import { Card, CardContent } from '@/components/ui/card'
-import { Calendar, CreditCard } from 'lucide-react'
+import { Calendar } from 'lucide-react'
 
 interface BillingCycleProps {
   nextDate: string
@@ -24,7 +24,9 @@ export function BillingCycle({ nextDate, amountInCents }: BillingCycleProps) {
             <p className="text-sm text-muted-foreground">Proxima cobranca</p>
             <div className="flex items-center gap-2">
               <p className="text-lg font-bold tabular-nums">{formatBrl(amountInCents)}</p>
-              <span className="text-sm text-muted-foreground">em {new Date(nextDate).toLocaleDateString('pt-BR')}</span>
+              <span className="text-sm text-muted-foreground">
+                em {new Date(nextDate).toLocaleDateString('pt-BR')}
+              </span>
             </div>
           </div>
         </div>

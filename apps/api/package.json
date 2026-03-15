@@ -19,8 +19,10 @@
     "@appfy/integrations": "workspace:*",
     "@appfy/shared": "workspace:*",
     "@hono/node-server": "^1.14.3",
+    "bullmq": "^5.71.0",
     "hono": "^4.7.13",
     "jose": "^6.0.13",
+    "stripe": "^17.7.0",
     "zod": "^3.25.67"
   },
   "devDependencies": {

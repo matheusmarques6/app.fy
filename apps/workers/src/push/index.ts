@@ -4,6 +4,7 @@ import { parseEnv, pushEnvSchema } from '../shared/env.js'
 import { createLogger } from '../shared/logger.js'
 import { createRedisConnectionOptions } from '../shared/redis.js'
 import { createWorker, registerGracefulShutdown } from '../shared/worker-factory.js'
+import { createNoopStripeClient } from '../shared/stripe-stub.js'
 import { createPushDispatchProcessor } from './push-dispatch.worker.js'
 
 const logger = createLogger('push-dispatch')
@@ -18,7 +19,9 @@ const db = createDrizzleClient(env.DATABASE_URL)
 
 const deps = createDependencies({
   db,
-  stripeSecretKey: env.STRIPE_SECRET_KEY,
+  stripeClient: createNoopStripeClient(),
+  stripeWebhookSecret: '',
+  planPriceRegistry: {},
   oneSignalApiKey: env.ONESIGNAL_API_KEY,
   encryptionSecret: env.ENCRYPTION_SECRET,
 })

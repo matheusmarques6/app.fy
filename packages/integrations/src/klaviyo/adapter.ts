@@ -14,7 +14,7 @@ export interface KlaviyoHttpClient {
  */
 export class KlaviyoFetchClient implements KlaviyoHttpClient {
   async get<T>(url: string, headers?: Record<string, string>): Promise<T> {
-    const response = await fetch(url, { method: 'GET', headers })
+    const response = await fetch(url, { method: 'GET', ...(headers !== undefined && { headers }) })
     if (!response.ok) {
       throw new Error(`Klaviyo API error: ${response.status} ${response.statusText}`)
     }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { KlaviyoHttpClient } from './adapter.js'
 import { KlaviyoRestAdapter } from './adapter.js'
 import type { KlaviyoConfig } from './types.js'
@@ -11,7 +11,7 @@ class KlaviyoHttpClientSpy implements KlaviyoHttpClient {
   shouldThrow = false
 
   async get<T>(url: string, headers?: Record<string, string>): Promise<T> {
-    this.calls.push({ url, headers })
+    this.calls.push({ url, ...(headers !== undefined && { headers }) })
     if (this.shouldThrow) throw new Error('Network error')
     return this.response as T
   }
@@ -47,8 +47,8 @@ describe('KlaviyoRestAdapter', () => {
 
       // Assert
       expect(httpClient.calls).toHaveLength(1)
-      expect(httpClient.calls[0].url).toBe('https://a.klaviyo.com/api/profiles/')
-      expect(httpClient.calls[0].headers).toEqual({
+      expect(httpClient.calls[0]!.url).toBe('https://a.klaviyo.com/api/profiles/')
+      expect(httpClient.calls[0]!.headers).toEqual({
         Authorization: 'Klaviyo-API-Key pk_test_abc123',
         revision: '2024-10-15',
         Accept: 'application/json',
@@ -120,11 +120,11 @@ describe('KlaviyoRestAdapter', () => {
       const metrics = await adapter.getMetrics()
 
       // Assert
-      expect(httpClient.calls[0].url).toBe('https://a.klaviyo.com/api/metrics/')
+      expect(httpClient.calls[0]!.url).toBe('https://a.klaviyo.com/api/metrics/')
       expect(metrics).toHaveLength(1)
-      expect(metrics[0].name).toBe('Opened Email')
-      expect(metrics[0].value).toBe(0)
-      expect(metrics[0].timestamp).toBeInstanceOf(Date)
+      expect(metrics[0]!.name).toBe('Opened Email')
+      expect(metrics[0]!.value).toBe(0)
+      expect(metrics[0]!.timestamp).toBeInstanceOf(Date)
     })
 
     it('should return empty array when Klaviyo is down (graceful degradation)', async () => {
@@ -163,7 +163,7 @@ describe('KlaviyoRestAdapter', () => {
       const segments = await adapter.getSegments()
 
       // Assert
-      expect(httpClient.calls[0].url).toBe('https://a.klaviyo.com/api/segments/')
+      expect(httpClient.calls[0]!.url).toBe('https://a.klaviyo.com/api/segments/')
       expect(segments).toEqual([
         { id: 'seg-1', name: 'Active Customers', memberCount: 1500 },
         { id: 'seg-2', name: 'VIP', memberCount: 200 },
@@ -215,7 +215,7 @@ describe('KlaviyoRestAdapter', () => {
       await adapter.getProfiles()
 
       // Assert
-      expect(httpClient.calls[0].headers?.revision).toBe('2024-10-15')
+      expect(httpClient.calls[0]!.headers?.revision).toBe('2024-10-15')
     })
 
     it('should use custom revision when provided', async () => {
@@ -226,7 +226,7 @@ describe('KlaviyoRestAdapter', () => {
       await adapter.getProfiles()
 
       // Assert
-      expect(httpClient.calls[0].headers?.revision).toBe('2025-01-01')
+      expect(httpClient.calls[0]!.headers?.revision).toBe('2025-01-01')
     })
   })
 })

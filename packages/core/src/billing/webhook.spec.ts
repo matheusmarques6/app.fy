@@ -14,7 +14,12 @@ class StripeProviderSpy {
     this.lastArgs[m] = args
   }
 
-  async createCheckoutSession(customerId: string, priceId: string, successUrl: string, cancelUrl: string) {
+  async createCheckoutSession(
+    customerId: string,
+    priceId: string,
+    successUrl: string,
+    cancelUrl: string,
+  ) {
     this.track('createCheckoutSession', [customerId, priceId, successUrl, cancelUrl])
     return { sessionId: 'cs_123', url: 'https://checkout.stripe.com/cs_123' }
   }
@@ -100,9 +105,15 @@ class AuditLogServiceSpy {
     this.lastArgs[m] = args
   }
 
-  async log(tenantId: string, action: string, entityType: string, entityId: string, metadata?: Record<string, unknown>) {
+  async log(
+    tenantId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+    metadata?: Record<string, unknown>,
+  ) {
     this.track('log', [tenantId, action, entityType, entityId, metadata])
-    this.allCalls.push({ action, metadata })
+    this.allCalls.push({ action, ...(metadata !== undefined && { metadata }) })
   }
 }
 
@@ -135,6 +146,8 @@ function makeTenant(overrides: Partial<TenantRow> = {}): TenantRow {
     name: 'Test Tenant',
     slug: 'test-tenant',
     platform: 'starter',
+    platformStoreUrl: null,
+    platformCredentials: null,
     onesignalAppId: null,
     isActive: true,
     notificationCountCurrentPeriod: 0,
@@ -170,7 +183,7 @@ describe('Stripe Webhook Lifecycle', () => {
       auditLogService: auditLog as never,
       planPriceRegistry: PLAN_PRICES,
       webhookSecret: 'whsec_test',
-      automationRepo: opts?.withAutomationRepo !== false ? automationRepo as never : undefined,
+      ...(opts?.withAutomationRepo !== false && { automationRepo: automationRepo as never }),
     })
   }
 
@@ -275,7 +288,11 @@ describe('Stripe Webhook Lifecycle', () => {
       const result = sut.constructWebhookEvent('raw-body', 'sig_abc')
 
       expect(result.type).toBe('checkout.session.completed')
-      expect(stripeProvider.lastArgs.constructWebhookEvent).toEqual(['raw-body', 'sig_abc', 'whsec_test'])
+      expect(stripeProvider.lastArgs.constructWebhookEvent).toEqual([
+        'raw-body',
+        'sig_abc',
+        'whsec_test',
+      ])
     })
 
     it('should return event with created timestamp', () => {

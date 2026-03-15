@@ -70,6 +70,7 @@ function makeDelivery(overrides: Partial<DeliveryRow> = {}): DeliveryRow {
     openedAt: overrides.openedAt ?? null,
     clickedAt: overrides.clickedAt ?? null,
     convertedAt: overrides.convertedAt ?? null,
+    externalId: overrides.externalId ?? null,
     errorMessage: overrides.errorMessage ?? null,
     createdAt: overrides.createdAt ?? new Date(),
     updatedAt: overrides.updatedAt ?? new Date(),
@@ -103,13 +104,21 @@ class DeviceRepoSpy extends SpyTracker {
     this.track('findActiveByUser', [tenantId, appUserId])
     return this.activeDevices.filter((d) => d.appUserId === appUserId)
   }
-  async findById(): Promise<DeviceRow | undefined> { return undefined }
-  async findByTokenAndPlatform(): Promise<DeviceRow[]> { return [] }
-  async register(): Promise<DeviceRow> { return makeDevice() }
+  async findById(): Promise<DeviceRow | undefined> {
+    return undefined
+  }
+  async findByTokenAndPlatform(): Promise<DeviceRow[]> {
+    return []
+  }
+  async register(): Promise<DeviceRow> {
+    return makeDevice()
+  }
   async deactivate(): Promise<void> {}
   async deactivateByUserAndPlatform(): Promise<void> {}
   async updateLastSeen(): Promise<void> {}
-  async countByUser(): Promise<number> { return 0 }
+  async countByUser(): Promise<number> {
+    return 0
+  }
 }
 
 class DeliveryRepoSpy extends SpyTracker {
@@ -129,8 +138,43 @@ class DeliveryRepoSpy extends SpyTracker {
     this.track('updateStatus', [tenantId, id, status])
   }
 
-  async updateManyStatus(tenantId: string, ids: string[], status: DeliveryStatus, timestamp?: Date): Promise<void> {
+  async updateManyStatus(
+    tenantId: string,
+    ids: string[],
+    status: DeliveryStatus,
+    timestamp?: Date,
+  ): Promise<void> {
     this.track('updateManyStatus', [tenantId, ids, status, timestamp])
+  }
+
+  async findPendingByNotification(
+    tenantId: string,
+    notificationId: string,
+  ): Promise<DeliveryRow[]> {
+    this.track('findPendingByNotification', [tenantId, notificationId])
+    return []
+  }
+
+  async findPendingByNotificationAndTokens(
+    tenantId: string,
+    notificationId: string,
+    deviceTokens: string[],
+  ): Promise<DeliveryRow[]> {
+    this.track('findPendingByNotificationAndTokens', [tenantId, notificationId, deviceTokens])
+    return []
+  }
+
+  async updateManyExternalId(tenantId: string, ids: string[], externalId: string): Promise<void> {
+    this.track('updateManyExternalId', [tenantId, ids, externalId])
+  }
+
+  async updateManySent(
+    tenantId: string,
+    ids: string[],
+    externalId: string,
+    sentAt: Date,
+  ): Promise<void> {
+    this.track('updateManySent', [tenantId, ids, externalId, sentAt])
   }
 }
 
@@ -138,9 +182,14 @@ class PushProviderSpy extends SpyTracker implements PushProvider {
   sendResult: PushResult = { externalId: 'ext-1', recipientCount: 1 }
   shouldFail = false
 
-  async createApp(): Promise<{ appId: string }> { return { appId: 'test-app' } }
+  async createApp(): Promise<{ appId: string }> {
+    return { appId: 'test-app' }
+  }
 
-  async sendNotification(appId: string, notification: PushNotificationPayload): Promise<PushResult> {
+  async sendNotification(
+    appId: string,
+    notification: PushNotificationPayload,
+  ): Promise<PushResult> {
     this.track('sendNotification', [appId, notification])
     if (this.shouldFail) throw new Error('Provider failure')
     return this.sendResult
@@ -168,7 +217,7 @@ class RetryQueueSpy extends SpyTracker implements RetryQueueAdapter {
 
   async add(name: string, data: unknown, opts?: Record<string, unknown>): Promise<{ id: string }> {
     this.track('add', [name, data, opts])
-    this._jobs.push({ name, data, opts })
+    this._jobs.push({ name, data, ...(opts !== undefined && { opts }) })
     return { id: crypto.randomUUID() }
   }
 
@@ -191,7 +240,7 @@ function makeSut(opts?: { withRetryQueue?: boolean }) {
     deliveryRepo,
     pushProvider,
     notificationRepo,
-    retryQueue,
+    ...(retryQueue !== undefined && { retryQueue }),
   })
 
   return { sut, deviceRepo, deliveryRepo, pushProvider, notificationRepo, retryQueue }
@@ -223,7 +272,10 @@ describe('PushDispatchService', () => {
       expect(deliveryRepo.wasCalled('createMany')).toBe(true)
       expect(pushProvider.wasCalled('sendNotification')).toBe(true)
 
-      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [string, PushNotificationPayload]
+      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [
+        string,
+        PushNotificationPayload,
+      ]
       expect(payload.playerIds).toEqual(['token-1', 'token-2', 'token-3'])
     })
 
@@ -244,15 +296,17 @@ describe('PushDispatchService', () => {
       const { sut, notificationRepo } = makeSut()
       notificationRepo.result = undefined
 
-      await expect(
-        sut.dispatch(tenantId, notificationId, ['user-1'], appId),
-      ).rejects.toThrow(NotificationNotFoundError)
+      await expect(sut.dispatch(tenantId, notificationId, ['user-1'], appId)).rejects.toThrow(
+        NotificationNotFoundError,
+      )
     })
 
     it('should update delivery statuses to sent on success', async () => {
       const { sut, deviceRepo, deliveryRepo, notificationRepo } = makeSut()
       notificationRepo.result = makeNotification({ tenantId })
-      deviceRepo.activeDevices = [makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' })]
+      deviceRepo.activeDevices = [
+        makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' }),
+      ]
 
       await sut.dispatch(tenantId, notificationId, ['user-1'], appId)
 
@@ -264,7 +318,9 @@ describe('PushDispatchService', () => {
     it('should update delivery statuses to failed when provider throws', async () => {
       const { sut, deviceRepo, deliveryRepo, pushProvider, notificationRepo } = makeSut()
       notificationRepo.result = makeNotification({ tenantId })
-      deviceRepo.activeDevices = [makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' })]
+      deviceRepo.activeDevices = [
+        makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' }),
+      ]
       pushProvider.shouldFail = true
 
       const result = await sut.dispatch(tenantId, notificationId, ['user-1'], appId)
@@ -278,11 +334,16 @@ describe('PushDispatchService', () => {
     it('should include deep link ref in push payload', async () => {
       const { sut, deviceRepo, pushProvider, notificationRepo } = makeSut()
       notificationRepo.result = makeNotification({ tenantId })
-      deviceRepo.activeDevices = [makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' })]
+      deviceRepo.activeDevices = [
+        makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' }),
+      ]
 
       await sut.dispatch(tenantId, notificationId, ['user-1'], appId)
 
-      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [string, PushNotificationPayload]
+      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [
+        string,
+        PushNotificationPayload,
+      ]
       expect(payload.data).toEqual({ ref: `push_${notificationId}` })
     })
 
@@ -297,21 +358,28 @@ describe('PushDispatchService', () => {
       const result = await sut.dispatch(tenantId, notificationId, ['user-1'], appId)
 
       expect(result.status).toBe('sent')
-      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [string, PushNotificationPayload]
+      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [
+        string,
+        PushNotificationPayload,
+      ]
       expect(payload.playerIds).toEqual(['token-1'])
     })
 
     it('should queue for retry when provider fails and retryQueue is available', async () => {
-      const { sut, deviceRepo, pushProvider, notificationRepo, retryQueue } = makeSut({ withRetryQueue: true })
+      const { sut, deviceRepo, pushProvider, notificationRepo, retryQueue } = makeSut({
+        withRetryQueue: true,
+      })
       notificationRepo.result = makeNotification({ tenantId })
-      deviceRepo.activeDevices = [makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' })]
+      deviceRepo.activeDevices = [
+        makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' }),
+      ]
       pushProvider.shouldFail = true
 
       const result = await sut.dispatch(tenantId, notificationId, ['user-1'], appId)
 
       expect(result.status).toBe('failed')
       expect(retryQueue!.wasCalled('add')).toBe(true)
-      expect(retryQueue!.jobs[0].name).toBe('push-dispatch-retry')
+      expect(retryQueue!.jobs[0]!.name).toBe('push-dispatch-retry')
     })
 
     it('should skip opted-out users when appUserLookup is provided', async () => {
@@ -348,14 +416,19 @@ describe('PushDispatchService', () => {
       expect(result.status).toBe('sent')
       // Only user-1's device should be dispatched
       expect(result.recipientCount).toBe(1)
-      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [string, PushNotificationPayload]
+      const [, payload] = pushProvider.lastCallArgs('sendNotification') as [
+        string,
+        PushNotificationPayload,
+      ]
       expect(payload.playerIds).toEqual(['token-1'])
     })
 
     it('should not throw when provider fails and no retryQueue is configured', async () => {
       const { sut, deviceRepo, pushProvider, notificationRepo } = makeSut()
       notificationRepo.result = makeNotification({ tenantId })
-      deviceRepo.activeDevices = [makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' })]
+      deviceRepo.activeDevices = [
+        makeDevice({ tenantId, appUserId: 'user-1', deviceToken: 'token-1' }),
+      ]
       pushProvider.shouldFail = true
 
       const result = await sut.dispatch(tenantId, notificationId, ['user-1'], appId)

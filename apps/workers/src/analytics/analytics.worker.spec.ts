@@ -61,7 +61,10 @@ function makeSut() {
   const analyticsService = new AnalyticsServiceSpy()
   const logger = new LoggerSpy()
   const deps = { analyticsService } as unknown as Dependencies
-  const processor = createAnalyticsProcessor(deps, logger as unknown as import('../shared/logger.js').Logger)
+  const processor = createAnalyticsProcessor(
+    deps,
+    logger as unknown as import('../shared/logger.js').Logger,
+  )
   return { processor, analyticsService, logger }
 }
 
@@ -108,7 +111,7 @@ describe('Analytics Worker Processor', () => {
       await processor(job)
 
       expect(logger.warns).toHaveLength(1)
-      expect(logger.warns[0].msg).toContain('Unknown metric type')
+      expect(logger.warns[0]!.msg).toContain('Unknown metric type')
     })
 
     it('should not warn on known metric type', async () => {
@@ -129,9 +132,9 @@ describe('Analytics Worker Processor', () => {
       await processor(job)
 
       expect(analyticsService.aggregateCalls).toHaveLength(1)
-      expect(analyticsService.aggregateCalls[0].tenantId).toBe('tenant-1')
-      expect(analyticsService.aggregateCalls[0].period.from).toBeInstanceOf(Date)
-      expect(analyticsService.aggregateCalls[0].period.to).toBeInstanceOf(Date)
+      expect(analyticsService.aggregateCalls[0]!.tenantId).toBe('tenant-1')
+      expect(analyticsService.aggregateCalls[0]!.period.from).toBeInstanceOf(Date)
+      expect(analyticsService.aggregateCalls[0]!.period.to).toBeInstanceOf(Date)
     })
 
     it('should log completion with metrics', async () => {
@@ -189,7 +192,7 @@ describe('Analytics Worker Processor', () => {
 
       expect(analyticsService.aggregateCalls).toHaveLength(2)
       const logs = logger.infos.filter((l) => l.msg.includes('completed'))
-      expect(logs[0].meta.totalSent).toBe(logs[1].meta.totalSent)
+      expect(logs[0]!.meta.totalSent).toBe(logs[1]!.meta.totalSent)
     })
   })
 })

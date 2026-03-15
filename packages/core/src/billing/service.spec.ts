@@ -24,7 +24,12 @@ class StripeProviderSpy {
     items: [{ id: 'si_1', priceId: 'price_starter' }],
   }
 
-  async createCheckoutSession(customerId: string, priceId: string, successUrl: string, cancelUrl: string) {
+  async createCheckoutSession(
+    customerId: string,
+    priceId: string,
+    successUrl: string,
+    cancelUrl: string,
+  ) {
     this.track('createCheckoutSession', [customerId, priceId, successUrl, cancelUrl])
     return this.checkoutResult
   }
@@ -104,7 +109,13 @@ class AuditLogServiceSpy {
     this.lastArgs[m] = args
   }
 
-  async log(tenantId: string, action: string, entityType: string, entityId: string, metadata?: Record<string, unknown>) {
+  async log(
+    tenantId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+    metadata?: Record<string, unknown>,
+  ) {
     this.track('log', [tenantId, action, entityType, entityId, metadata])
   }
 }
@@ -125,6 +136,8 @@ function makeTenant(overrides: Partial<TenantRow> = {}): TenantRow {
     name: 'Test Tenant',
     slug: 'test-tenant',
     platform: 'starter',
+    platformStoreUrl: null,
+    platformCredentials: null,
     onesignalAppId: null,
     isActive: true,
     notificationCountCurrentPeriod: 0,
@@ -396,7 +409,11 @@ describe('BillingService', () => {
       const result = sut.constructWebhookEvent('raw', 'sig_123')
 
       expect(result.type).toBe('checkout.session.completed')
-      expect(stripeProvider.lastArgs.constructWebhookEvent).toEqual(['raw', 'sig_123', 'whsec_test'])
+      expect(stripeProvider.lastArgs.constructWebhookEvent).toEqual([
+        'raw',
+        'sig_123',
+        'whsec_test',
+      ])
     })
   })
 })

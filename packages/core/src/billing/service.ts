@@ -45,7 +45,7 @@ export class BillingService {
   private readonly auditLogService: AuditLogService
   private readonly planPriceRegistry: PlanPriceRegistry
   private readonly webhookSecret: string
-  private readonly automationRepo?: AutomationRepository
+  private readonly automationRepo: AutomationRepository | undefined
 
   constructor(deps: BillingServiceDeps) {
     this.stripeProvider = deps.stripeProvider
@@ -87,13 +87,10 @@ export class BillingService {
       cancelUrl,
     )
 
-    await this.auditLogService.log(
-      tenantId,
-      'billing.checkout.created',
-      'tenant',
-      tenantId,
-      { planName, sessionId: result.sessionId },
-    )
+    await this.auditLogService.log(tenantId, 'billing.checkout.created', 'tenant', tenantId, {
+      planName,
+      sessionId: result.sessionId,
+    })
 
     return result
   }
@@ -113,12 +110,7 @@ export class BillingService {
 
     const result = await this.stripeProvider.createPortalSession(tenant.stripeCustomerId, returnUrl)
 
-    await this.auditLogService.log(
-      tenantId,
-      'billing.portal.created',
-      'tenant',
-      tenantId,
-    )
+    await this.auditLogService.log(tenantId, 'billing.portal.created', 'tenant', tenantId)
 
     return result
   }
@@ -157,13 +149,11 @@ export class BillingService {
   ): Promise<void> {
     await this.tenantRepo.updateStripeIds(tenantId, stripeCustomerId, stripeSubscriptionId)
 
-    await this.auditLogService.log(
-      tenantId,
-      'billing.checkout.completed',
-      'tenant',
-      tenantId,
-      { planName, stripeCustomerId, stripeSubscriptionId },
-    )
+    await this.auditLogService.log(tenantId, 'billing.checkout.completed', 'tenant', tenantId, {
+      planName,
+      stripeCustomerId,
+      stripeSubscriptionId,
+    })
   }
 
   /**
@@ -199,13 +189,7 @@ export class BillingService {
     // Upgrade applies immediately — reset notification count
     await this.tenantRepo.resetNotificationCount(tenantId)
 
-    await this.auditLogService.log(
-      tenantId,
-      'billing.upgrade',
-      'tenant',
-      tenantId,
-      { newPlanName },
-    )
+    await this.auditLogService.log(tenantId, 'billing.upgrade', 'tenant', tenantId, { newPlanName })
   }
 
   /**
@@ -220,13 +204,10 @@ export class BillingService {
 
     // Downgrade is deferred — do NOT reset notification count
     // The actual plan change will happen at next billing cycle via webhook
-    await this.auditLogService.log(
-      tenantId,
-      'billing.downgrade.scheduled',
-      'tenant',
-      tenantId,
-      { newPlanName, effectiveAt: 'next_billing_cycle' },
-    )
+    await this.auditLogService.log(tenantId, 'billing.downgrade.scheduled', 'tenant', tenantId, {
+      newPlanName,
+      effectiveAt: 'next_billing_cycle',
+    })
   }
 
   /**
@@ -236,12 +217,7 @@ export class BillingService {
     await this.tenantRepo.update(tenantId, { isActive: true })
     await this.tenantRepo.resetNotificationCount(tenantId)
 
-    await this.auditLogService.log(
-      tenantId,
-      'billing.payment.succeeded',
-      'tenant',
-      tenantId,
-    )
+    await this.auditLogService.log(tenantId, 'billing.payment.succeeded', 'tenant', tenantId)
   }
 
   /**
@@ -250,13 +226,9 @@ export class BillingService {
   async handlePaymentFailed(tenantId: string): Promise<void> {
     // Keep tenant active — grace period of 3 days
     // Don't deactivate — just log
-    await this.auditLogService.log(
-      tenantId,
-      'billing.payment.failed',
-      'tenant',
-      tenantId,
-      { gracePeriodDays: 3 },
-    )
+    await this.auditLogService.log(tenantId, 'billing.payment.failed', 'tenant', tenantId, {
+      gracePeriodDays: 3,
+    })
   }
 
   /**
@@ -270,12 +242,7 @@ export class BillingService {
       await this.automationRepo.disableAllForTenant(tenantId)
     }
 
-    await this.auditLogService.log(
-      tenantId,
-      'billing.subscription.deleted',
-      'tenant',
-      tenantId,
-    )
+    await this.auditLogService.log(tenantId, 'billing.subscription.deleted', 'tenant', tenantId)
   }
 
   /**

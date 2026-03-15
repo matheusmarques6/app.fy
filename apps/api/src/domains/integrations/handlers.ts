@@ -80,7 +80,7 @@ export function createIntegrationHandlers(deps: Dependencies) {
       const rawBody = await c.req.text()
 
       // 1. Validate platform is supported
-      const headers = extractPlatformHeaders(c, platform)
+      const headers = extractPlatformHeaders(c, platform!)
       if (!headers) {
         return c.json(
           { error: { code: 'UNSUPPORTED_PLATFORM', message: `Unsupported platform: ${platform}` } },
@@ -91,14 +91,24 @@ export function createIntegrationHandlers(deps: Dependencies) {
       // 2. Validate required headers
       if (!headers.hmac || !headers.topic) {
         return c.json(
-          { error: { code: 'MISSING_HEADERS', message: 'Missing required webhook headers (hmac, topic)' } },
+          {
+            error: {
+              code: 'MISSING_HEADERS',
+              message: 'Missing required webhook headers (hmac, topic)',
+            },
+          },
           400,
         )
       }
 
       if (!headers.shopDomain) {
         return c.json(
-          { error: { code: 'MISSING_HEADERS', message: 'Missing required webhook headers (shop domain)' } },
+          {
+            error: {
+              code: 'MISSING_HEADERS',
+              message: 'Missing required webhook headers (shop domain)',
+            },
+          },
           400,
         )
       }
@@ -117,18 +127,25 @@ export function createIntegrationHandlers(deps: Dependencies) {
       try {
         if (!tenant.platformCredentials) {
           return c.json(
-            { error: { code: 'MISSING_CREDENTIALS', message: 'No platform credentials configured for this tenant' } },
+            {
+              error: {
+                code: 'MISSING_CREDENTIALS',
+                message: 'No platform credentials configured for this tenant',
+              },
+            },
             422,
           )
         }
         const decrypted = await deps.encryptionService.decrypt(
-          tenant.platformCredentials as { ct: string; iv: string; tag: string; alg: string },
+          tenant.platformCredentials as { ct: string; iv: string; tag: string; alg: 'aes-256-gcm' },
         )
         const credentials = JSON.parse(decrypted) as Record<string, string>
         webhookSecret = credentials.webhookSecret ?? credentials.clientSecret ?? ''
       } catch {
         return c.json(
-          { error: { code: 'CREDENTIAL_ERROR', message: 'Failed to decrypt platform credentials' } },
+          {
+            error: { code: 'CREDENTIAL_ERROR', message: 'Failed to decrypt platform credentials' },
+          },
           500,
         )
       }
@@ -167,7 +184,23 @@ export function createIntegrationHandlers(deps: Dependencies) {
         queue: QUEUE_NAMES.dataIngestion,
       }
 
-      // Actual BullMQ enqueue will happen when workers integration is connected
+      try {
+        await deps.dataIngestionQueue.add(QUEUE_NAMES.dataIngestion, jobPayload, {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+        })
+      } catch {
+        return c.json(
+          {
+            error: {
+              code: 'QUEUE_UNAVAILABLE',
+              message: 'Failed to enqueue webhook for processing',
+            },
+          },
+          503,
+        )
+      }
+
       return c.json({ received: true })
     },
   }

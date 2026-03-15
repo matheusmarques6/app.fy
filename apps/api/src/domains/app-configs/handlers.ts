@@ -1,4 +1,4 @@
-import type { Dependencies } from '@appfy/core'
+import type { Dependencies, UpdateAppConfigInput } from '@appfy/core'
 import { BuildError } from '@appfy/core'
 import type { Context } from 'hono'
 import type { UpdateAppConfigBody } from './schemas.js'
@@ -16,7 +16,14 @@ export function createAppConfigHandlers(deps: Dependencies) {
     async update(c: Context) {
       const tenantId = c.get('tenantId') as string
       const body = c.get('validatedBody' as never) as UpdateAppConfigBody
-      const config = await deps.appConfigService.updateConfig(tenantId, body)
+      const input: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(body)) {
+        if (value !== undefined) input[key] = value
+      }
+      const config = await deps.appConfigService.updateConfig(
+        tenantId,
+        input as UpdateAppConfigInput,
+      )
       return c.json({ data: config })
     },
 

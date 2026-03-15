@@ -13,12 +13,11 @@
  *   app_events, segments (app_user_segments), automation_configs,
  *   app_configs, audit_log
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   createTestClient,
   truncateAll,
   seedTenant,
-  seedUser,
   seedAppUser,
   seedDevice,
   seedNotification,
@@ -32,21 +31,9 @@ import {
   AuditLogRepository,
   EventRepository,
   SegmentRepository,
-  TenantRepository,
 } from '@appfy/core'
 import type { Database } from '@appfy/db'
-import {
-  notifications,
-  appUsers,
-  devices,
-  appEvents,
-  automationConfigs,
-  auditLog,
-  appConfigs,
-  notificationDeliveries,
-  segments,
-  appUserSegments,
-} from '@appfy/db'
+import { automationConfigs, appConfigs, notificationDeliveries } from '@appfy/db'
 import { eq, and, count } from 'drizzle-orm'
 
 export const TENANT_A = 'tenant-a-isolation'
@@ -82,10 +69,10 @@ let tenantBId: string
 
 testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
   beforeAll(async () => {
-    db = createTestClient(DATABASE_URL!)
+    db = createTestClient()
     await truncateAll(db)
-    const tenantA = await seedTenant(db, { slug: 'isolation-a' })
-    const tenantB = await seedTenant(db, { slug: 'isolation-b' })
+    const tenantA = await seedTenant(db)
+    const tenantB = await seedTenant(db)
     tenantAId = tenantA.tenant.id
     tenantBId = tenantB.tenant.id
   })
@@ -97,13 +84,11 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
   // ---- notifications ----
   describe('Tenant Isolation: notifications', () => {
     const notifRepo = () => new NotificationRepository(db)
-    let notifAId: string
     let notifBId: string
 
     beforeAll(async () => {
-      const a = await seedNotification(db, tenantAId, { title: 'Notif A' })
+      await seedNotification(db, tenantAId, { title: 'Notif A' })
       const b = await seedNotification(db, tenantBId, { title: 'Notif B' })
-      notifAId = a.id
       notifBId = b.id
     })
 
@@ -146,13 +131,11 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
   // ---- app_users ----
   describe('Tenant Isolation: app_users', () => {
     const repo = () => new AppUserRepository(db)
-    let userAId: string
     let userBId: string
 
     beforeAll(async () => {
-      const a = await seedAppUser(db, tenantAId, { email: 'a@iso.test' })
+      await seedAppUser(db, tenantAId, { email: 'a@iso.test' })
       const b = await seedAppUser(db, tenantBId, { email: 'b@iso.test' })
-      userAId = a.id
       userBId = b.id
     })
 
@@ -191,7 +174,6 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
   // ---- devices ----
   describe('Tenant Isolation: devices', () => {
     const repo = () => new DeviceRepository(db)
-    let deviceAId: string
     let deviceBId: string
     let appUserAId: string
 
@@ -199,9 +181,8 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
       const userA = await seedAppUser(db, tenantAId, { email: 'devA@iso.test' })
       const userB = await seedAppUser(db, tenantBId, { email: 'devB@iso.test' })
       appUserAId = userA.id
-      const devA = await seedDevice(db, tenantAId, userA.id)
+      await seedDevice(db, tenantAId, userA.id)
       const devB = await seedDevice(db, tenantBId, userB.id)
-      deviceAId = devA.id
       deviceBId = devB.id
     })
 
@@ -263,7 +244,10 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
 
     beforeAll(async () => {
       await repo().create(tenantAId, { name: 'Seg A', rules: { operator: 'AND', conditions: [] } })
-      const segB = await repo().create(tenantBId, { name: 'Seg B', rules: { operator: 'AND', conditions: [] } })
+      const segB = await repo().create(tenantBId, {
+        name: 'Seg B',
+        rules: { operator: 'AND', conditions: [] },
+      })
       segBId = segB.id
     })
 
@@ -385,11 +369,13 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
     })
 
     it('count: Tenant A count excludes Tenant B data', async () => {
-      const [result] = await db
+      const rows = await db
         .select({ total: count() })
         .from(notificationDeliveries)
         .where(eq(notificationDeliveries.tenantId, tenantAId))
-      expect(Number(result.total)).toBeGreaterThan(0)
+      const result = rows[0]
+      expect(result).toBeDefined()
+      expect(Number(result!.total)).toBeGreaterThan(0)
     })
   })
 
@@ -398,36 +384,25 @@ testOrSkip('Tenant Isolation Tests (Story 2.5)', () => {
     let configBId: string
 
     beforeAll(async () => {
-      const [cfgA] = await db
-        .insert(appConfigs)
-        .values({ tenantId: tenantAId, appName: 'App A' })
-        .returning()
-      const [cfgB] = await db
+      await db.insert(appConfigs).values({ tenantId: tenantAId, appName: 'App A' }).returning()
+      const cfgBRows = await db
         .insert(appConfigs)
         .values({ tenantId: tenantBId, appName: 'App B' })
         .returning()
-      configBId = cfgB.id
+      configBId = cfgBRows[0]!.id
     })
 
     it('query: Tenant A sees only own config', async () => {
-      const rows = await db
-        .select()
-        .from(appConfigs)
-        .where(eq(appConfigs.tenantId, tenantAId))
+      const rows = await db.select().from(appConfigs).where(eq(appConfigs.tenantId, tenantAId))
       expect(rows.length).toBe(1)
-      expect(rows[0].appName).toBe('App A')
+      expect(rows[0]!.appName).toBe('App A')
     })
 
     it('findById: Tenant A cannot access Tenant B config', async () => {
       const rows = await db
         .select()
         .from(appConfigs)
-        .where(
-          and(
-            eq(appConfigs.tenantId, tenantAId),
-            eq(appConfigs.id, configBId),
-          ),
-        )
+        .where(and(eq(appConfigs.tenantId, tenantAId), eq(appConfigs.id, configBId)))
       expect(rows.length).toBe(0)
     })
   })

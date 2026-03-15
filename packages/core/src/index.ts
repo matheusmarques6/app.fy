@@ -37,13 +37,45 @@ export type {
   UpdateAppUserInput,
 } from './app-users/index.js'
 // App Users
-export { AppUserRepository, AppUserService, isValidEmail, validateAppUserInput } from './app-users/index.js'
-export type { AutomationConfigRow, AutomationJobPayload, QueueAdapter, UpdateAutomationInput } from './automations/index.js'
+export {
+  AppUserRepository,
+  AppUserService,
+  isValidEmail,
+  validateAppUserInput,
+} from './app-users/index.js'
+export type {
+  AutomationConfigRow,
+  AutomationJobPayload,
+  QueueAdapter,
+  UpdateAutomationInput,
+} from './automations/index.js'
 // Automations
-export { AutomationRepository, AutomationService, AutomationTriggerService, DEFAULT_DELAYS } from './automations/index.js'
-export type { BillingServiceDeps, BillingWebhookEvent, CheckoutSession, IdempotencyStore, PlanLimitCheckResult, PlanPriceRegistry, StripeCheckoutResult, StripeClient, StripeSubscription, Subscription } from './billing/index.js'
+export {
+  AutomationRepository,
+  AutomationService,
+  AutomationTriggerService,
+  DEFAULT_DELAYS,
+} from './automations/index.js'
+export type {
+  BillingServiceDeps,
+  BillingWebhookEvent,
+  CheckoutSession,
+  IdempotencyStore,
+  PlanLimitCheckResult,
+  PlanPriceRegistry,
+  StripeCheckoutResult,
+  StripeClient,
+  StripeSubscription,
+  Subscription,
+} from './billing/index.js'
 // Billing
-export { BillingService, checkPlanLimit, InMemoryIdempotencyStore, PlanLimitService, StripeProvider } from './billing/index.js'
+export {
+  BillingService,
+  checkPlanLimit,
+  InMemoryIdempotencyStore,
+  PlanLimitService,
+  StripeProvider,
+} from './billing/index.js'
 export { addSeconds, isExpired, now } from './common/date.js'
 // Common utilities
 export {
@@ -60,11 +92,21 @@ export { DeviceRepository, DeviceService } from './devices/index.js'
 export type { EncryptedCredential } from './encryption/service.js'
 // Encryption
 export { EncryptionService } from './encryption/service.js'
-export type { MembershipRow } from './memberships/index.js'
+export type { MembershipRow, MembershipWithTenant } from './memberships/index.js'
 // Memberships
 export { MembershipRepository } from './memberships/index.js'
-export type { AppEventRow, CreateEventInput, EventFilters, IngestEventInput } from './events/index.js'
-export type { EventIngestionDeps, EventQueueAdapter, EventHistoryLookup, EventProcessorDeps } from './events/index.js'
+export type {
+  AppEventRow,
+  CreateEventInput,
+  EventFilters,
+  IngestEventInput,
+} from './events/index.js'
+export type {
+  EventIngestionDeps,
+  EventQueueAdapter,
+  EventHistoryLookup,
+  EventProcessorDeps,
+} from './events/index.js'
 // Events
 export { EventRepository, EventIngestionService, EventProcessorService } from './events/index.js'
 export {
@@ -161,7 +203,12 @@ export type {
   PushResult,
 } from './push/index.js'
 // Push
-export { DrizzleDeliveryRepository, OneSignalProvider, PushDispatchService, PushService } from './push/index.js'
+export {
+  DrizzleDeliveryRepository,
+  OneSignalProvider,
+  PushDispatchService,
+  PushService,
+} from './push/index.js'
 export type {
   AppUserOptInLookup,
   CreateDeliveryInput,
@@ -191,7 +238,12 @@ export {
   queueNames,
 } from './queues/index.js'
 // Builds
-export type { AppConfigLookup, BuildQueueAdapter, BuildServiceDeps, BuildStatus } from './builds/index.js'
+export type {
+  AppConfigLookup,
+  BuildQueueAdapter,
+  BuildServiceDeps,
+  BuildStatus,
+} from './builds/index.js'
 export { BuildError, BuildService } from './builds/index.js'
 
 // LGPD

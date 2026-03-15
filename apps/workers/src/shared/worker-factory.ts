@@ -1,4 +1,4 @@
-import { type Job, type Processor, Worker } from 'bullmq'
+import { type ConnectionOptions, type Job, type Processor, Worker } from 'bullmq'
 import type { RedisOptions } from 'ioredis'
 import { logger } from './logger.js'
 
@@ -19,7 +19,7 @@ export function createWorker<T>(config: WorkerConfig<T>): Worker<T> {
   const { queueName, connection, processor, concurrency = 1 } = config
 
   const worker = new Worker<T>(queueName, processor, {
-    connection,
+    connection: connection as ConnectionOptions,
     concurrency,
   })
 

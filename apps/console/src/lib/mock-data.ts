@@ -209,7 +209,8 @@ export const automationFlows: AutomationFlow[] = [
     isEnabled: true,
     delaySeconds: 1800,
     templateTitle: 'Seu PIX expira em breve!',
-    templateBody: 'O pagamento PIX do pedido #{{order_id}} expira em breve. Pague agora para garantir!',
+    templateBody:
+      'O pagamento PIX do pedido #{{order_id}} expira em breve. Pague agora para garantir!',
     sentCount: 1850,
     conversionRate: 13.2,
   },
@@ -362,11 +363,41 @@ export const appConfig = {
   lastBuildAt: '2026-03-10T18:00:00Z',
   currentVersion: '1.2.0',
   buildHistory: [
-    { id: 'b-1', version: '1.2.0', status: 'published', createdAt: '2026-03-10T18:00:00Z', platform: 'android' },
-    { id: 'b-2', version: '1.2.0', status: 'published', createdAt: '2026-03-10T17:30:00Z', platform: 'ios' },
-    { id: 'b-3', version: '1.1.0', status: 'published', createdAt: '2026-02-28T14:00:00Z', platform: 'android' },
-    { id: 'b-4', version: '1.1.0', status: 'published', createdAt: '2026-02-28T13:30:00Z', platform: 'ios' },
-    { id: 'b-5', version: '1.0.0', status: 'published', createdAt: '2026-02-15T10:00:00Z', platform: 'android' },
+    {
+      id: 'b-1',
+      version: '1.2.0',
+      status: 'published',
+      createdAt: '2026-03-10T18:00:00Z',
+      platform: 'android',
+    },
+    {
+      id: 'b-2',
+      version: '1.2.0',
+      status: 'published',
+      createdAt: '2026-03-10T17:30:00Z',
+      platform: 'ios',
+    },
+    {
+      id: 'b-3',
+      version: '1.1.0',
+      status: 'published',
+      createdAt: '2026-02-28T14:00:00Z',
+      platform: 'android',
+    },
+    {
+      id: 'b-4',
+      version: '1.1.0',
+      status: 'published',
+      createdAt: '2026-02-28T13:30:00Z',
+      platform: 'ios',
+    },
+    {
+      id: 'b-5',
+      version: '1.0.0',
+      status: 'published',
+      createdAt: '2026-02-15T10:00:00Z',
+      platform: 'android',
+    },
   ],
   menuItems: [
     { id: 'm-1', label: 'Inicio', icon: 'home', url: '/' },
@@ -426,10 +457,26 @@ export const integrations: IntegrationInfo[] = [
 export const customers: CustomerRow[] = Array.from({ length: 20 }, (_, i) => ({
   id: `cu-${i + 1}`,
   name: [
-    'Maria Silva', 'Joao Santos', 'Ana Oliveira', 'Carlos Souza', 'Fernanda Lima',
-    'Pedro Costa', 'Juliana Almeida', 'Rafael Pereira', 'Camila Rodrigues', 'Lucas Ferreira',
-    'Beatriz Carvalho', 'Gustavo Martins', 'Larissa Araujo', 'Thiago Ribeiro', 'Isabela Gomes',
-    'Mateus Barbosa', 'Carolina Nascimento', 'Bruno Rocha', 'Amanda Cardoso', 'Diego Mendes',
+    'Maria Silva',
+    'Joao Santos',
+    'Ana Oliveira',
+    'Carlos Souza',
+    'Fernanda Lima',
+    'Pedro Costa',
+    'Juliana Almeida',
+    'Rafael Pereira',
+    'Camila Rodrigues',
+    'Lucas Ferreira',
+    'Beatriz Carvalho',
+    'Gustavo Martins',
+    'Larissa Araujo',
+    'Thiago Ribeiro',
+    'Isabela Gomes',
+    'Mateus Barbosa',
+    'Carolina Nascimento',
+    'Bruno Rocha',
+    'Amanda Cardoso',
+    'Diego Mendes',
   ][i]!,
   email: `usuario${i + 1}@email.com`,
   platform: i % 3 === 0 ? 'ios' : 'android',
@@ -474,7 +521,7 @@ export const segments = [
 // ─── Billing ───────────────────────────────────────────────
 
 export const billingData = {
-  currentPlan: 'business' as const,
+  currentPlan: 'business' as 'starter' | 'business' | 'elite',
   notificationsSent: 8,
   notificationLimit: null as number | null,
   nextBillingDate: '2026-04-10',
@@ -519,16 +566,65 @@ export const teamMembers: TeamMember[] = [
 ]
 
 export const auditLog: AuditEntry[] = [
-  { id: 'al-1', action: 'notification.created', resource: 'Mega promoção de verão', userId: 'tm-1', userName: 'Matheus Admin', createdAt: '2026-03-12T15:30:00Z' },
-  { id: 'al-2', action: 'automation.toggled', resource: 'Browse Abandoned → OFF', userId: 'tm-2', userName: 'Ana Editor', createdAt: '2026-03-12T14:00:00Z' },
-  { id: 'al-3', action: 'member.invited', resource: 'carlos@appfy.com (viewer)', userId: 'tm-1', userName: 'Matheus Admin', createdAt: '2026-03-11T10:00:00Z' },
-  { id: 'al-4', action: 'billing.upgraded', resource: 'Starter → Business', userId: 'tm-1', userName: 'Matheus Admin', createdAt: '2026-03-10T09:00:00Z' },
-  { id: 'al-5', action: 'app.build.triggered', resource: 'v1.2.0 Android + iOS', userId: 'tm-1', userName: 'Matheus Admin', createdAt: '2026-03-10T08:00:00Z' },
+  {
+    id: 'al-1',
+    action: 'notification.created',
+    resource: 'Mega promoção de verão',
+    userId: 'tm-1',
+    userName: 'Matheus Admin',
+    createdAt: '2026-03-12T15:30:00Z',
+  },
+  {
+    id: 'al-2',
+    action: 'automation.toggled',
+    resource: 'Browse Abandoned → OFF',
+    userId: 'tm-2',
+    userName: 'Ana Editor',
+    createdAt: '2026-03-12T14:00:00Z',
+  },
+  {
+    id: 'al-3',
+    action: 'member.invited',
+    resource: 'carlos@appfy.com (viewer)',
+    userId: 'tm-1',
+    userName: 'Matheus Admin',
+    createdAt: '2026-03-11T10:00:00Z',
+  },
+  {
+    id: 'al-4',
+    action: 'billing.upgraded',
+    resource: 'Starter → Business',
+    userId: 'tm-1',
+    userName: 'Matheus Admin',
+    createdAt: '2026-03-10T09:00:00Z',
+  },
+  {
+    id: 'al-5',
+    action: 'app.build.triggered',
+    resource: 'v1.2.0 Android + iOS',
+    userId: 'tm-1',
+    userName: 'Matheus Admin',
+    createdAt: '2026-03-10T08:00:00Z',
+  },
 ]
 
 export const activeSessions: SessionInfo[] = [
-  { id: 'sess-1', device: 'Windows 11', browser: 'Chrome 122', ip: '187.12.34.56', lastActive: '2026-03-13T09:00:00Z', isCurrent: true },
-  { id: 'sess-2', device: 'iPhone 15', browser: 'Safari 17', ip: '187.12.34.57', lastActive: '2026-03-12T22:00:00Z', isCurrent: false },
+  {
+    id: 'sess-1',
+    device: 'Windows 11',
+    browser: 'Chrome 122',
+    ip: '187.12.34.56',
+    lastActive: '2026-03-13T09:00:00Z',
+    isCurrent: true,
+  },
+  {
+    id: 'sess-2',
+    device: 'iPhone 15',
+    browser: 'Safari 17',
+    ip: '187.12.34.57',
+    lastActive: '2026-03-12T22:00:00Z',
+    isCurrent: false,
+  },
 ]
 
 // ─── Tenants (mock multi-tenant) ───────────────────────────

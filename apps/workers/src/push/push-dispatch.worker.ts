@@ -39,8 +39,8 @@ export function createPushDispatchProcessor(deps: Dependencies, log: Logger) {
     // Load notification to get title and body
     const notification = await deps.notificationService.getById(tenantId, notificationId)
 
-    // TODO: TenantRow does not yet include onesignalAppId — use tenantId as placeholder
-    const appId = (tenant as unknown as Record<string, unknown>).onesignalAppId as string | undefined
+    // TenantRow.onesignalAppId is string | null
+    const appId = tenant.onesignalAppId
     if (!appId) {
       log.error('Push dispatch failed — tenant has no OneSignal app ID', {
         jobId: job.id,
@@ -59,15 +59,26 @@ export function createPushDispatchProcessor(deps: Dependencies, log: Logger) {
       playerIds: batchTokens,
     })
 
+    // Update delivery records scoped to this batch's tokens (H2: avoids race with concurrent batches)
+    // Uses atomic updateManySent (H3: single DB call for status + externalId)
+    const pendingDeliveries = await deps.deliveryRepo.findPendingByNotificationAndTokens(
+      tenantId,
+      notificationId,
+      batchTokens,
+    )
+    if (pendingDeliveries.length > 0) {
+      const deliveryIds = pendingDeliveries.map((d) => d.id)
+      const sentAt = new Date()
+      await deps.deliveryRepo.updateManySent(tenantId, deliveryIds, result.externalId, sentAt)
+    }
+
     log.info('Push dispatch completed', {
       jobId: job.id,
       notificationId,
       tenantId,
       externalId: result.externalId,
       recipientCount: result.recipientCount,
+      deliveriesUpdated: pendingDeliveries.length,
     })
-
-    // TODO: Update delivery records with sent status
-    // await deps.notificationService.markDeliveriesSent(notificationId, batchTokens)
   }
 }

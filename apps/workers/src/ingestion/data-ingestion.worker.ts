@@ -32,7 +32,7 @@ const KNOWN_EVENT_TYPES = new Set([
  * Steps 3-5 remain as TODO stubs — they depend on services not yet built.
  * On failure, BullMQ retries with exponential backoff (3 attempts).
  */
-export function createDataIngestionProcessor(deps: Dependencies, log: Logger) {
+export function createDataIngestionProcessor(_deps: Dependencies, log: Logger) {
   return async (job: Job<DataIngestionPayload>): Promise<void> => {
     const { tenantId, eventType, payload, source } = job.data
 

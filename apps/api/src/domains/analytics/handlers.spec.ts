@@ -9,8 +9,16 @@ import type {
 } from '@appfy/core'
 import type { FlowType } from '@appfy/shared'
 import { Hono } from 'hono'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createAnalyticsHandlers } from './handlers.js'
+
+// ──────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────
+
+interface JsonResponse {
+  data: Record<string, unknown> & { [key: string]: unknown }
+}
 
 // ──────────────────────────────────────────────
 // AnalyticsServiceSpy
@@ -55,7 +63,11 @@ class AnalyticsServiceSpy {
     { date: '2026-01-02', converted: 5 },
   ]
 
-  getTopNotificationsCalls: Array<{ tenantId: string; period: AnalyticsPeriod; limit?: number }> = []
+  getTopNotificationsCalls: Array<{
+    tenantId: string
+    period: AnalyticsPeriod
+    limit: number | undefined
+  }> = []
   topResult: TopNotification[] = [
     { notificationId: 'n-1', title: 'Promo', converted: 10, sent: 100, conversionRate: 0.1 },
   ]
@@ -105,7 +117,7 @@ function makeSut() {
 
   // Inject tenantId into context (simulates tenant middleware)
   app.use('/*', async (c, next) => {
-    c.set('tenantId', TENANT_ID)
+    c.set('tenantId' as never, TENANT_ID)
     await next()
   })
 
@@ -128,13 +140,13 @@ describe('Analytics Handlers', () => {
       const { app, analyticsService } = makeSut()
 
       const res = await app.request('/overview')
-      const json = await res.json()
+      const json = (await res.json()) as JsonResponse
 
       expect(res.status).toBe(200)
       expect(json.data.totalSent).toBe(100)
       expect(json.data.deliveryRate).toBe(0.9)
       expect(analyticsService.getOverviewCalls).toHaveLength(1)
-      expect(analyticsService.getOverviewCalls[0].tenantId).toBe(TENANT_ID)
+      expect(analyticsService.getOverviewCalls[0]!.tenantId).toBe(TENANT_ID)
     })
 
     it('should accept period query param', async () => {
@@ -142,7 +154,7 @@ describe('Analytics Handlers', () => {
 
       await app.request('/overview?period=7d')
 
-      const call = analyticsService.getOverviewCalls[0]
+      const call = analyticsService.getOverviewCalls[0]!
       const daysDiff = Math.round(
         (call.period.to.getTime() - call.period.from.getTime()) / (1000 * 60 * 60 * 24),
       )
@@ -164,7 +176,7 @@ describe('Analytics Handlers', () => {
       }
 
       const res = await app.request('/overview')
-      const json = await res.json()
+      const json = (await res.json()) as JsonResponse
 
       expect(res.status).toBe(200)
       expect(json.data.totalSent).toBe(0)
@@ -177,12 +189,12 @@ describe('Analytics Handlers', () => {
       const { app, analyticsService } = makeSut()
 
       const res = await app.request('/notifications/notif-1')
-      const json = await res.json()
+      const json = (await res.json()) as JsonResponse
 
       expect(res.status).toBe(200)
       expect(json.data.notificationId).toBe('notif-1')
       expect(json.data.sent).toBe(50)
-      expect(analyticsService.getByNotificationCalls[0].notificationId).toBe('notif-1')
+      expect(analyticsService.getByNotificationCalls[0]!.notificationId).toBe('notif-1')
     })
   })
 
@@ -191,7 +203,7 @@ describe('Analytics Handlers', () => {
       const { app, analyticsService } = makeSut()
 
       const res = await app.request('/flows')
-      const json = await res.json()
+      const json = (await res.json()) as JsonResponse
 
       expect(res.status).toBe(200)
       expect(json.data).toHaveLength(9) // 9 flow types
@@ -202,12 +214,12 @@ describe('Analytics Handlers', () => {
       const { app, analyticsService } = makeSut()
 
       const res = await app.request('/flows?flow_type=welcome')
-      const json = await res.json()
+      const json = (await res.json()) as JsonResponse
 
       expect(res.status).toBe(200)
       expect(json.data).toHaveLength(1)
       expect(analyticsService.getByFlowCalls).toHaveLength(1)
-      expect(analyticsService.getByFlowCalls[0].flowType).toBe('welcome')
+      expect(analyticsService.getByFlowCalls[0]!.flowType).toBe('welcome')
     })
   })
 
@@ -216,12 +228,12 @@ describe('Analytics Handlers', () => {
       const { app, analyticsService } = makeSut()
 
       const res = await app.request('/revenue')
-      const json = await res.json()
+      const json = (await res.json()) as { data: Array<Record<string, unknown>> }
 
       expect(res.status).toBe(200)
       expect(json.data).toHaveLength(2)
-      expect(json.data[0].date).toBe('2026-01-01')
-      expect(json.data[0].converted).toBe(3)
+      expect(json.data[0]!.date).toBe('2026-01-01')
+      expect(json.data[0]!.converted).toBe(3)
       expect(analyticsService.getRevenueChartCalls).toHaveLength(1)
     })
   })
@@ -231,12 +243,12 @@ describe('Analytics Handlers', () => {
       const { app, analyticsService } = makeSut()
 
       const res = await app.request('/top-notifications')
-      const json = await res.json()
+      const json = (await res.json()) as { data: Array<Record<string, unknown>> }
 
       expect(res.status).toBe(200)
       expect(json.data).toHaveLength(1)
-      expect(json.data[0].title).toBe('Promo')
-      expect(json.data[0].conversionRate).toBe(0.1)
+      expect(json.data[0]!.title).toBe('Promo')
+      expect(json.data[0]!.conversionRate).toBe(0.1)
       expect(analyticsService.getTopNotificationsCalls).toHaveLength(1)
     })
   })
@@ -250,10 +262,10 @@ describe('Analytics Handlers', () => {
       await app.request('/revenue')
       await app.request('/top-notifications')
 
-      expect(analyticsService.getOverviewCalls[0].tenantId).toBe(TENANT_ID)
-      expect(analyticsService.getByNotificationCalls[0].tenantId).toBe(TENANT_ID)
-      expect(analyticsService.getRevenueChartCalls[0].tenantId).toBe(TENANT_ID)
-      expect(analyticsService.getTopNotificationsCalls[0].tenantId).toBe(TENANT_ID)
+      expect(analyticsService.getOverviewCalls[0]!.tenantId).toBe(TENANT_ID)
+      expect(analyticsService.getByNotificationCalls[0]!.tenantId).toBe(TENANT_ID)
+      expect(analyticsService.getRevenueChartCalls[0]!.tenantId).toBe(TENANT_ID)
+      expect(analyticsService.getTopNotificationsCalls[0]!.tenantId).toBe(TENANT_ID)
     })
   })
 })
